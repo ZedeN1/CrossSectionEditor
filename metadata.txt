@@ -1,0 +1,21 @@
+[general]
+name=Cross Section Editor
+qgisMinimumVersion=3.0
+description=A plugin for editing cross section data. Primarily for ESTRY-TUFLOW cross-sections.
+version=0.01
+author=Pavel Diptan
+email=pdiptan@gmail.com
+
+about=This plugin for QGIS provides an interactive tool for editing and managing cross-section data. Primarily for use with ESTRY-TUFLOW cross sections.
+
+tracker=https://github.com/ZedeN1/CrossSectionEditor/issues
+repository=https://github.com/ZedeN1/CrossSectionEditor
+homepage=https://github.com/ZedeN1/CrossSectionEditor
+
+tags=cross-section,editor,hydraulics,TUFLOW
+
+category=Vector
+icon=icon.png
+
+experimental=True
+deprecated=False

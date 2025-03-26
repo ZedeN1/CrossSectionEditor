@@ -335,7 +335,7 @@ class CrossSectionEditorApp(QMainWindow):
         # ---
         
         # Fix verticals
-        self.fix_verticals_check = QCheckBox("Fix Verticals and order")
+        self.fix_verticals_check = QCheckBox("Fix Verticals and order on load")
         header_layout.addWidget(self.fix_verticals_check, 2, 0)
         self.fix_verticals_check.stateChanged.connect(self.reload_current_file)
         
@@ -1261,8 +1261,8 @@ class CrossSectionEditorApp(QMainWindow):
                 trimmed_data = trimmed_data[trimmed_data[self.x_column] <= self.right_bank]
             
             # Fix verticals if needed on save
-            if self.fix_verticals_check.isChecked():
-                trimmed_data = self.fix_verticals(trimmed_data)
+            # if self.fix_verticals_check.isChecked():
+            #     trimmed_data = self.fix_verticals(trimmed_data)
             
             # Make leftmost X=0 if needed
             if self.make_leftmost_zero_check.isChecked():

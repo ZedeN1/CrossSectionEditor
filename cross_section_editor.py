@@ -9,19 +9,19 @@ from qgis.core import (
     QgsExpressionContextUtils,
     QgsRectangle
 )
-from qgis.analysis import QgsNativeAlgorithms
+from qgis.analysis import (QgsNativeAlgorithms)
 
 import processing
 from processing.core.Processing import Processing
 
 # PyQt imports
-from qgis.PyQt.QtCore import Qt, QAbstractTableModel, QModelIndex, pyqtSignal, QEvent, QPoint, QTimer
-from qgis.PyQt.QtGui import QKeySequence, QColor, QBrush
+from qgis.PyQt.QtCore import (Qt, QAbstractTableModel, QModelIndex, pyqtSignal, QPoint, QTimer)
+from qgis.PyQt.QtGui import (QKeySequence, QColor, QBrush)
 from qgis.PyQt.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter,
     QTableView, QHeaderView, QPushButton, QFileDialog, QListWidget, QLabel,
     QCheckBox, QComboBox, QLineEdit, QMessageBox, QGridLayout, QGroupBox, QMenu,
-    QStatusBar, QDialog, QDialogButtonBox, QTextEdit, QItemDelegate,
+    QStatusBar, QDialog, QDialogButtonBox, QTextEdit,
     QAbstractItemView, QSizePolicy, QInputDialog, QAction
 )
 
@@ -32,10 +32,9 @@ import json
 import numpy as np
 import pandas as pd
 from collections import deque
+from ast import literal_eval
 
 # Third-party imports
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
@@ -128,7 +127,7 @@ class MatplotlibCanvas(FigureCanvas):
         self.axes = self.fig.add_subplot(111)
         FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
-        
+
         # Make layout expand with window resizing
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.updateGeometry()
@@ -138,9 +137,9 @@ class ColumnSettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Column Settings")
         self.resize(400, 300)
-        
+
         layout = QVBoxLayout(self)
-        
+
         # Help text
         help_label = QLabel(
             "List of expected column names in descending order of preference.\n"
@@ -149,7 +148,7 @@ class ColumnSettingsDialog(QDialog):
         )
         help_label.setWordWrap(True)
         layout.addWidget(help_label)
-        
+
         # X Column preferences
         x_group = QGroupBox("X Column Preferences")
         x_layout = QVBoxLayout()
@@ -157,7 +156,7 @@ class ColumnSettingsDialog(QDialog):
         x_layout.addWidget(self.x_text)
         x_group.setLayout(x_layout)
         layout.addWidget(x_group)
-        
+
         # Y Column preferences
         y_group = QGroupBox("Y Column Preferences")
         y_layout = QVBoxLayout()
@@ -165,7 +164,7 @@ class ColumnSettingsDialog(QDialog):
         y_layout.addWidget(self.y_text)
         y_group.setLayout(y_layout)
         layout.addWidget(y_group)
-        
+
         # N Column preferences
         n_group = QGroupBox("N (Roughness) Column Preferences. [] if not needed")
         n_layout = QVBoxLayout()
@@ -173,7 +172,7 @@ class ColumnSettingsDialog(QDialog):
         n_layout.addWidget(self.n_text)
         n_group.setLayout(n_layout)
         layout.addWidget(n_group)
-        
+
         # W Column preferences
         x_unsortable_group = QGroupBox("Unsortable Column Preferences (eg 'W' in HW tables).")
         x_unsortable_layout = QVBoxLayout()
@@ -181,27 +180,27 @@ class ColumnSettingsDialog(QDialog):
         x_unsortable_layout.addWidget(self.x_unsortable_text)
         x_unsortable_group.setLayout(x_unsortable_layout)
         layout.addWidget(x_unsortable_group)
-               
+
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-    
+
     def set_values(self, x_prefs, y_prefs, n_prefs, x_unsortable_prefs):
         """Set the dialog values"""
         self.x_text.setPlainText(str(x_prefs))
         self.y_text.setPlainText(str(y_prefs))
         self.n_text.setPlainText(str(n_prefs))
         self.x_unsortable_text.setPlainText(str(x_unsortable_prefs))
-    
+
     def get_values(self):
         """Get the dialog values"""
         try:
-            x_prefs = eval(self.x_text.toPlainText())
-            y_prefs = eval(self.y_text.toPlainText())
-            n_prefs = eval(self.n_text.toPlainText())
-            x_unsortable_prefs = eval(self.x_unsortable_text.toPlainText())
+            x_prefs = literal_eval(self.x_text.toPlainText())
+            y_prefs = literal_eval(self.y_text.toPlainText())
+            n_prefs = literal_eval(self.n_text.toPlainText())
+            x_unsortable_prefs = literal_eval(self.x_unsortable_text.toPlainText())
             return x_prefs, y_prefs, n_prefs, x_unsortable_prefs
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error parsing preferences: {str(e)}")
@@ -211,15 +210,17 @@ class CrossSectionEditorApp(QMainWindow):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         Processing.initialize()
-        
+
         # Store the iface reference
         self.iface = iface
-                    
+
         self.setWindowTitle("Cross Section Editor")
         self.setGeometry(100, 100, 1280, 720)
-        
+
         # State variables
         self.current_file_index = -1
+        self.file_path = None
+        self.file_name = None
         self.file_list = []
         self.csv_files = []
         self.left_bank = None
@@ -229,135 +230,140 @@ class CrossSectionEditorApp(QMainWindow):
         self.current_data = None
         self.x_column = None
         self.y_column = None
+        self.n_column = None
         self.has_header = True
-        
+
         # Column preferences (default)
         self.x_column_preferences = ['X', 'x', 'X (m)', 'Chainage', 'W', 0]
         self.y_column_preferences = ['Y', 'y', 'Z', 'z', 'H', 'h', 1]
         self.n_column_preferences = ['N', 'n', 'M', 'm']
         self.x_column_unsortable_preferences = ['W']
-        
+
         # Cross section overlaps with SHP/GPKG
         self.polygon_layer = None
         self.paths_layer = None
         self.overlaps = []
         self.paths_style = os.path.join(os.path.dirname(__file__), 'styles', 'paths_style.qml')
-        
+        self.num_paths = None
+
+        # Plot
+        self.marker_points = None
+        self._hover_cid = None
+
         # Other CSVs
         self.file_name_no_version = None
         self.other_version_csvs = []
         self.other_version_csv = None
         self.other_version_csv_name = None
-        
+        self.other_version_csv_x = None
+        self.other_version_csv_y = None
+
         # Create the UI
         self.init_ui()
-        
-        # Connect all the event handlers
-        # self.connect_events()
-    
+
     def init_ui(self):
         # Main widget
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        
+
         # Main layout
         main_layout = QVBoxLayout(main_widget)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
-        
+
         # Header with controls (fixed height)
         header_widget = QWidget()
-        header_widget.setMaximumHeight(150)  # Fixed height for header
+        header_widget.setMaximumHeight(150)
         header_layout = QGridLayout(header_widget)
         header_layout.setContentsMargins(5, 5, 5, 5)
         header_layout.setSpacing(5)
-        
+
         # Previous and Next buttons
         self.prev_button = QPushButton("Previous")
         self.prev_button.clicked.connect(self.previous_file)
         header_layout.addWidget(self.prev_button, 0, 0)
-        
+
         self.next_button = QPushButton("Next")
         self.next_button.clicked.connect(self.next_file)
         header_layout.addWidget(self.next_button, 0, 1)
-        
+
         # File name label
         self.filename_label = QLabel("No file loaded")
         header_layout.addWidget(self.filename_label, 0, 2, 1, 2)
-        
+
         self.reload_button = QPushButton("Reload File")
         self.reload_button.clicked.connect(self.reload_current_file)
         header_layout.addWidget(self.reload_button, 0, 4)
-        
+
         # Save button
         self.save_button = QPushButton("Save")
         self.save_button.clicked.connect(self.save_file)
         header_layout.addWidget(self.save_button, 0, 5)
-        
+
         # Undo/Redo buttons
         self.undo_button = QPushButton("Undo")
         self.undo_button.clicked.connect(self.undo)
         self.undo_button.setEnabled(False)  # Disabled until implemented
         header_layout.addWidget(self.undo_button, 1, 0)
-        
+
         self.redo_button = QPushButton("Redo")
         self.redo_button.clicked.connect(self.redo)
         self.redo_button.setEnabled(False)  # Disabled until implemented
         header_layout.addWidget(self.redo_button, 1, 1)
-        
+
         # Version control options
         self.version_combo = QComboBox()
         self.version_combo.addItems(["Increment Version", "Change in-place"])
         header_layout.addWidget(self.version_combo, 1, 2)
-        
+
         self.version_label = QLabel("Version:")
         header_layout.addWidget(self.version_label, 1, 3)
         header_layout.setAlignment(self.version_label, Qt.AlignmentFlag.AlignRight)
-        
+
         self.version_edit = QLineEdit("v02")
-        self.version_edit.setFixedWidth(50)  # Reduce width
-        header_layout.addWidget(self.version_edit, 1, 4)  # Ensure it stays next to the label
+        self.version_edit.setFixedWidth(50)
+        header_layout.addWidget(self.version_edit, 1, 4)
         header_layout.setAlignment(self.version_edit, Qt.AlignmentFlag.AlignLeft)
-        
+
         # Initially hide the label and line edit
         self.version_label.setVisible(self.version_combo.currentText() == "Increment Version")
         self.version_edit.setVisible(self.version_combo.currentText() == "Increment Version")
-        
+
         # Connect signal to slot
         self.version_combo.currentIndexChanged.connect(self.toggle_version_fields)
-        
+
         # Column Settings button
         self.column_settings_button = QPushButton("Column Settings")
         self.column_settings_button.clicked.connect(self.show_column_settings)
         header_layout.addWidget(self.column_settings_button, 1, 5)
-        
+
         # Options
         # ---
-        
+
         # Fix verticals
         self.fix_verticals_check = QCheckBox("Fix Verticals and order on load")
         header_layout.addWidget(self.fix_verticals_check, 2, 0)
         self.fix_verticals_check.stateChanged.connect(self.reload_current_file)
-        
+
         # Make left most active point X=0
         self.make_leftmost_zero_check = QCheckBox("Open and save with StartX=0")
         header_layout.addWidget(self.make_leftmost_zero_check, 2, 1)
         self.make_leftmost_zero_check.stateChanged.connect(self.reload_current_file)
-        
+
         self.autosave_check = QCheckBox("Autosave on section change")
         header_layout.addWidget(self.autosave_check, 2, 2)
-        
+
         self.make_plot_file_check = QCheckBox("Make plot file on save")
         header_layout.addWidget(self.make_plot_file_check, 2, 3)
-        
+
         self.load_polygon_layer_btn = QPushButton("Load Polygon Layer")
-        header_layout.addWidget(self.load_polygon_layer_btn, 2, 4)  
+        header_layout.addWidget(self.load_polygon_layer_btn, 2, 4)
         self.load_polygon_layer_btn.clicked.connect(self.select_vector_layer)
-        
+
         self.other_version_csvs_btn = QPushButton("Other Version CSV files")
-        header_layout.addWidget(self.other_version_csvs_btn, 2, 5)  
+        header_layout.addWidget(self.other_version_csvs_btn, 2, 5)
         self.other_version_csvs_btn.clicked.connect(self.select_other_version_csvs)
-        
+
         # Static helper text
         self.left_bank_ctrl = QLabel("Ctrl + Click on plot to set Left Bank")
         header_layout.addWidget(self.left_bank_ctrl, 3, 0, 1, 2)
@@ -365,91 +371,88 @@ class CrossSectionEditorApp(QMainWindow):
         header_layout.addWidget(self.right_bank_alt, 3, 2, 1, 2)
         self.table_right_click = QLabel("Right Click on table view to set banks")
         header_layout.addWidget(self.table_right_click, 3, 4, 1, 2)
-        
+
         # Add the header to the main layout
         main_layout.addWidget(header_widget)
-        
+
         # Splitter for the three main sections
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        
+
         # Table view (left)
         table_widget = QWidget()
         table_layout = QVBoxLayout(table_widget)
         table_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.table_view = QTableView()
         self.table_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table_view.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table_view.horizontalHeader().customContextMenuRequested.connect(self.show_header_context_menu)
         self.table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        
+
         # Enable context menu for table view
         self.table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table_view.customContextMenuRequested.connect(self.show_context_menu)
-        
+
         table_layout.addWidget(self.table_view)
-        
+
         # Plot (middle)
         plot_widget = QWidget()
         plot_layout = QVBoxLayout(plot_widget)
         plot_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         self.canvas = MatplotlibCanvas(plot_widget, width=5, height=4, dpi=100)
         plot_layout.addWidget(self.canvas)
-        
+
         # Add toolbar
         self.toolbar = NavigationToolbar(self.canvas, plot_widget)
         plot_layout.addWidget(self.toolbar)
-        
+
         # File list (right)
         file_list_widget = QWidget()
         file_list_layout = QVBoxLayout(file_list_widget)
         file_list_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         file_list_label = QLabel("CSV Files")
         file_list_layout.addWidget(file_list_label)
-        
+
         self.file_list_widget = QListWidget()
         self.file_list_widget.itemClicked.connect(self.on_file_selected)
         file_list_layout.addWidget(self.file_list_widget)
-        
+
         # Load files button
         self.load_files_button = QPushButton("Load CSV Files")
         self.load_files_button.clicked.connect(self.load_csv_files)
         file_list_layout.addWidget(self.load_files_button)
-        
+
         # Close All files button
         self.close_all_files_button = QPushButton("Close CSV Files")
         self.close_all_files_button.clicked.connect(self.close_all_csv_files)
         file_list_layout.addWidget(self.close_all_files_button)
-        
+
         # Add the three widgets to the splitter
         splitter.addWidget(table_widget)
         splitter.addWidget(plot_widget)
         splitter.addWidget(file_list_widget)
-        
+
         # Set the initial sizes of the splitter
         splitter.setSizes([int(self.width()/3), int(self.width()/3), int(self.width()/3)])
-        
+
         # Add the splitter to the main layout
         main_layout.addWidget(splitter)
-        
+
         # Status bar for messages
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.message_queue = deque(maxlen=5)  # Store up to 5 messages
+        self.message_queue = deque(maxlen=5)
         self.current_message_timer = QTimer(self)
         self.current_message_timer.timeout.connect(self.show_next_message)
-        
+
         # Set up event handling for the plot
         self.canvas.mpl_connect('button_press_event', self.on_plot_click)
-        
-        # Create shortcuts
-        # self.create_shortcuts()
-        
+
         # Update marker points
         self.marker_points = None
-        
+
         # Show the UI
         self.show()
 
@@ -469,7 +472,7 @@ class CrossSectionEditorApp(QMainWindow):
             self.current_message_timer.start(duration)  # Wait before showing next
         else:
             self.current_message_timer.stop()  # No more messages, stop timer
-    
+
     def toggle_version_fields(self):
         """Enable/disable the version label and edit box without shifting the layout."""
         is_increment = self.version_combo.currentText() == "Increment Version"
@@ -483,7 +486,7 @@ class CrossSectionEditorApp(QMainWindow):
             self.version_edit.setStyleSheet("")  # Reset to default
         else:
             self.version_edit.setStyleSheet("background: transparent; border: none; color: transparent;")
-    
+
     def show_context_menu(self, position: QPoint):
         """Show context menu when right-clicking on a table row"""
         # print("Context menu requested at position:", position)
@@ -498,7 +501,7 @@ class CrossSectionEditorApp(QMainWindow):
         row = index.row()
         x_value = self.current_data.iloc[row][self.x_column]  # Get X value from row
         # print(f"x_value: {x_value}")
-        
+
         # Create context menu
         menu = QMenu(self)
         # print(f"menu: {menu}")
@@ -507,7 +510,7 @@ class CrossSectionEditorApp(QMainWindow):
         left_action = QAction("Set Left Bank", self)
         right_action = QAction("Set Right Bank", self)
         # print(f"left_action: {left_action}")
-        
+
         # Connect actions directly to the appropriate methods
         left_action.triggered.connect(lambda: self.set_left_bank(x_value, row))
         right_action.triggered.connect(lambda: self.set_right_bank(x_value, row))
@@ -516,16 +519,16 @@ class CrossSectionEditorApp(QMainWindow):
         menu.addAction(left_action)
         menu.addAction(right_action)
         # print(f"menu: {menu}")
-        
+
         # Show menu at cursor position
         # print(f"position = self.table_view.viewport().mapToGlobal(position): {self.table_view.viewport().mapToGlobal(position)}")
         menu.exec(self.table_view.viewport().mapToGlobal(position))
-    
+
     def show_column_settings(self):
         """Show dialog for column settings"""
         dialog = ColumnSettingsDialog(self)
         dialog.set_values(self.x_column_preferences, self.y_column_preferences, self.n_column_preferences, self.x_column_unsortable_preferences)
-        
+
         if dialog.exec():
             x_prefs, y_prefs, n_prefs, x_unsortable_prefs = dialog.get_values()
             if x_prefs is not None and y_prefs is not None and n_prefs is not None and x_unsortable_prefs is not None:
@@ -533,59 +536,59 @@ class CrossSectionEditorApp(QMainWindow):
                 self.y_column_preferences = y_prefs
                 self.n_column_preferences = n_prefs
                 self.x_column_unsortable_preferences = x_unsortable_prefs
-                
+
                 # Reload the current file with new settings
                 if self.current_data is not None:
                     self.reload_current_file()
-    
+
     def show_header_context_menu(self, pos):
         """Show context menu for header clicks"""
         if self.current_data is None:
             return
-            
+
         # Get the column index
         index = self.table_view.horizontalHeader().logicalIndexAt(pos)
         if index >= 0:
             # Create context menu
             context_menu = QMenu(self)
-            
+
             # Add actions
             set_x_action = QAction(f"Set as X Column", self)
             set_x_action.triggered.connect(lambda: self.set_column_as_x(index))
             context_menu.addAction(set_x_action)
-            
+
             set_y_action = QAction(f"Set as Y Column", self)
             set_y_action.triggered.connect(lambda: self.set_column_as_y(index))
             context_menu.addAction(set_y_action)
-            
+
             set_n_action = QAction(f"Set as N Column", self)
             set_n_action.triggered.connect(lambda: self.set_column_as_n(index))
             context_menu.addAction(set_n_action)
-            
+
             # Show the menu
             context_menu.exec(self.table_view.horizontalHeader().mapToGlobal(pos))
-    
+
     def set_column_as_x(self, index):
         """Set the specified column as X column"""
         if self.current_data is not None:
             self.x_column = self.current_data.columns[index]
             self.update_plot()
             self.show_status_message(f"Set {self.x_column} as X column", 1000)
-    
+
     def set_column_as_y(self, index):
         """Set the specified column as Y column"""
         if self.current_data is not None:
             self.y_column = self.current_data.columns[index]
             self.update_plot()
             self.show_status_message(f"Set {self.y_column} as Y column", 1000)
-            
+
     def set_column_as_n(self, index):
         """Set the specified column as N column"""
         if self.current_data is not None:
             self.n_column = self.current_data.columns[index]
             self.update_plot()
             self.show_status_message(f"Set {self.n_column} as N column", 1000)
-    
+
     def load_csv_files(self):
         """Open file dialog to select CSV files"""
         file_dialog = QFileDialog()
@@ -617,13 +620,19 @@ class CrossSectionEditorApp(QMainWindow):
                 # Refresh file list widget
                 self.file_list_widget.clear()
                 self.file_list_widget.addItems(self.file_list)
-                        
+
     def close_all_csv_files(self):
         """Close all loaded CSV files and reset the UI"""
-        self.csv_files = []  # Clear file paths
-        self.file_list = []  # Clear file names
-        self.current_file_index = -1  # Reset file index
-        self.current_data = None  # Clear current data
+        self.csv_files = []
+        self.other_version_csv = None
+        self.other_version_csv_name = None
+        self.other_version_csv_x = None
+        self.other_version_csv_y = None
+        self.other_version_csvs = []
+        self.other_version_csvs_btn.setText(f"Other Version CSV Files")
+        self.file_list = []
+        self.current_file_index = -1
+        self.current_data = None
 
         # Reset banks
         self.left_bank = None
@@ -638,16 +647,16 @@ class CrossSectionEditorApp(QMainWindow):
         self.table_view.setModel(None)
 
         # Clear the plot
-        self.canvas.axes.clear()
-        self.canvas.draw()
+        self.canvas.axes.cla()
+        self.canvas.draw_idle()
 
         # Update UI
         self.filename_label.setText("No file loaded")
         self.show_status_message("All CSV files closed", 1000)
-    
+
     def match_other_version_csv(self):
         """Finds the most recent versioned CSV matching self.file_name_no_version."""
-        
+
         def extract_version(filename):
             """Extracts the version number as a tuple for proper sorting."""
             name, _ = os.path.splitext(os.path.basename(filename))
@@ -655,7 +664,7 @@ class CrossSectionEditorApp(QMainWindow):
             if len(parts) > 1 and parts[-1].replace(".", "").isdigit():
                 return tuple(map(int, parts[-1].split(".")))  # Convert to tuple of ints
             return (0,)  # Default version
-    
+
         base_name = self.file_name_no_version  # Avoid repeated attribute lookup
         suffix = ".csv"
 
@@ -671,32 +680,32 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Sorting is fine for a small number of matches
         sorted_files = sorted(matching_files, key=extract_version, reverse=True)
-        
+
         self.other_version_csv = sorted_files[0]
         self.other_version_csv_name = os.path.splitext(os.path.basename(self.other_version_csv))[0]
         self.show_status_message(f"Found other csv: {self.other_version_csv_name}", 500)
-        
+
     def load_other_csv_file(self):
         """Load the other csv file into df for plot"""
         self.other_version_csv_x = None
         self.other_version_csv_y = None
-        
+
         try:
             has_header = self.detect_header(self.other_version_csv)
             other_df = pd.read_csv(self.other_version_csv, index_col=None, header=0 if has_header else None)
-            
+
             # Ensure numeric column indices are treated as integers
             try:
                 other_df.columns = [int(col) if str(col).isdigit() else col for col in other_df.columns]
             except ValueError:
                 pass  # Some columns are non-numeric, ignore conversion failure
-            
+
             # Detect X and Y columns *after* reading the full data
             x_column, y_column, _ = self.detect_xy_columns(other_df)
-            
+
             self.other_version_csv_x = other_df[x_column]
             self.other_version_csv_y = other_df[y_column]
-            
+
             self.show_status_message(f"Loaded other: {self.other_version_csv_name}", 500)
 
         except FileNotFoundError:
@@ -705,7 +714,7 @@ class CrossSectionEditorApp(QMainWindow):
             QMessageBox.critical(self, "Error", f"The other file is empty: {self.other_version_csv}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error loading other file: {str(e)}")
-            
+
     def load_current_file(self):
         """Load the current file into the table and plot"""
         if 0 <= self.current_file_index < len(self.csv_files):
@@ -717,29 +726,29 @@ class CrossSectionEditorApp(QMainWindow):
                     self.file_name_no_version = re.sub(r'_v\d+', '', self.file_name)
                     # print(f"self.file_name_no_version: {self.file_name_no_version}")
                     self.match_other_version_csv()
-                    
+
                 if self.other_version_csv:
                     self.load_other_csv_file()
-                    
+
                 # Check if the first row contains column-like names
                 self.has_header = self.detect_header(self.file_path)
 
                 # Read the full CSV with correct header setting
                 df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None)
-                
+
                 # Ensure numeric column indices are treated as integers
                 try:
                     df.columns = [int(col) if str(col).isdigit() else col for col in df.columns]
                 except ValueError:
                     pass  # Some columns are non-numeric, ignore conversion failure
-                
+
                 # Detect X and Y columns *after* reading the full data
                 self.x_column, self.y_column, self.n_column = self.detect_xy_columns(df)
-                
+
                 # Apply fix verticals if needed
                 if self.fix_verticals_check.isChecked():
                     df = self.fix_verticals(df)
-                    
+
                 # Apply fix verticals if needed
                 if self.make_leftmost_zero_check.isChecked():
                     df = self.make_leftmost_zero(df)
@@ -763,17 +772,17 @@ class CrossSectionEditorApp(QMainWindow):
                         self.points_to_path()
                     else:
                         self.show_status_message(f"self.polygon_layer.isValid(): {self.polygon_layer.isValid()}")
-                    
+
                 if self.paths_layer:
                     # print(f"self.paths_layer: {self.paths_layer}")
                     if self.paths_layer.isValid():
                         self.find_overlap_with_polygon()
                     else:
                         self.show_status_message(f"self.paths_layer.isValid(): {self.paths_layer.isValid()}")
-                
+
                 # Update the UI
                 self.update_table()
-                self.update_plot()
+                self.update_plot(clear=True)
 
                 self.filename_label.setText(os.path.basename(self.file_path))
                 self.show_status_message(f"Loaded: {os.path.basename(self.file_path)}", 500)
@@ -784,13 +793,12 @@ class CrossSectionEditorApp(QMainWindow):
                 QMessageBox.critical(self, "Error", f"The file is empty: {self.file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error loading file: {str(e)}")
-            
-                                    
+
     def reload_current_file(self):
         """Reload the current file with new settings"""
         if 0 <= self.current_file_index < len(self.csv_files):
             self.load_current_file()
-    
+
     def detect_header(self, file_path):
         """Determine if the CSV file has a header by analyzing the first few rows."""
         sample_df = pd.read_csv(file_path, nrows=3, header=None, dtype=str)
@@ -825,11 +833,11 @@ class CrossSectionEditorApp(QMainWindow):
                 if matching_cols:
                     x_column = matching_cols[0]
                     break
-                    
+
         # If no X column found, use the first column
         if x_column is None and not df.empty:
-             QMessageBox.warning(self, "Warning", f"No X column from preferences matches datafile: {self.x_column_preferences}")
-        
+            QMessageBox.warning(self, "Warning", f"No X column from preferences matches datafile: {self.x_column_preferences}")
+
         # Find Y column
         y_column = None
         for col in self.y_column_preferences:
@@ -848,11 +856,11 @@ class CrossSectionEditorApp(QMainWindow):
                 if matching_cols:
                     y_column = matching_cols[0]
                     break
-        
+
         # If no Y column found, use the second column
         if y_column is None and not df.empty:
             QMessageBox.warning(self, "Warning", f"No Y column from preferences matches datafile: {self.y_column_preferences}")
-            
+
         # Find N column
         n_column = None
         for col in self.n_column_preferences:
@@ -871,115 +879,99 @@ class CrossSectionEditorApp(QMainWindow):
                 if matching_cols:
                     n_column = matching_cols[0]
                     break
-        
+
         # If no N column found, use the second column
         if n_column is None and not df.empty:
             self.show_status_message(f"No N column from preferences matches datafile: {self.n_column_preferences}", 2000)
-            
+
         return x_column, y_column, n_column
-    
+
     def update_table(self):
-        # print(f"Table updated")
         """Update the table view with current data"""
         if self.current_data is not None:
             # print(f"self.current_data: {self.current_data}")
             # Create model
             model = EditablePandasModel(self.current_data)
-            
+
             # Set model first (this will trigger signals)
             self.table_view.setModel(model)
-            
+
             # Connect data change signal AFTER setting the model
             model.dataChanged.connect(self.on_table_data_changed)
-            
+
             # Update cut indices
             self.update_cut_indices(model)
-    
+
     def update_cut_indices(self, model=None):
         """Update indices that will be cut"""
         if model is None:
             model = self.table_view.model()
             if model is None:
                 return
-                
+
         if self.current_data is not None and self.x_column:
             cut_indices = []
-            
+
             # Get indices for left bank cut
             if self.left_bank is not None:
                 left_cut = self.current_data[self.current_data[self.x_column] < self.left_bank].index.tolist()
                 cut_indices.extend(left_cut)
-            
+
             # Get indices for right bank cut
             if self.right_bank is not None:
                 right_cut = self.current_data[self.current_data[self.x_column] > self.right_bank].index.tolist()
                 cut_indices.extend(right_cut)
-            
+
             # Update model
             model.set_cut_indices(cut_indices)
-    
+
     def on_table_data_changed(self):
         """Handle data changes in the table"""
         # Get the updated data from the model
         model = self.table_view.model()
         if model:
             self.current_data = model.get_dataframe()
-            
+
             # Update the plot
             self.update_plot(preserve_view=True)
-    
-    def find_nearest_point(self, x_click, y_click):
-        """Find the index of the nearest point to the clicked location"""
-        if self.current_data is None or self.x_column is None or self.y_column is None:
-            return None
-            
-        x_values = self.current_data[self.x_column].values
-        y_values = self.current_data[self.y_column].values
-        
-        # Calculate distances
-        distances = np.sqrt((x_values - x_click)**2 + (y_values - y_click)**2)
-        
-        # Find the index of the minimum distance
-        nearest_idx = np.argmin(distances)
-        
-        return nearest_idx
-    
-    def update_plot(self, preserve_view=False):
+
+
+    def update_plot(self, preserve_view=False, clear=False):
         """Update the plot with current data
-            
+
         Args:
             preserve_view (bool): If True, preserve the current axis limits
+            clear (bool): If True, clear the existing plot
         """
+        if clear is True:
+            self.canvas.axes.cla()
+
         # Store current view limits if needed
         if preserve_view:
             xlim = self.canvas.axes.get_xlim()
             ylim = self.canvas.axes.get_ylim()
-        
+
         if self.current_data is not None:
-            # Ensure required columns exist
-            if self.x_column not in self.current_data.columns:
-                self.show_status_message(f"X column '{self.x_column}' not found in data!", 2000)
+            # Consolidated data extraction and validation
+            try:
+                x = self.current_data[self.x_column]
+                y = self.current_data[self.y_column]
+            except KeyError as e:
+                self.show_status_message(f"Column not found: {e}", 2000)
                 return
-            if self.y_column not in self.current_data.columns:
-                self.show_status_message(f"Y column '{self.y_column}' not found in data!", 2000)
-                return
-                
+
             # Clear the plot
             self.canvas.axes.clear()
-            
-            # Extract data
-            x = self.current_data[self.x_column]
-            y = self.current_data[self.y_column]
-            
+
             # Create empty lists to store legend elements
             legend_elements = []
             legend_labels = []
-            
+
             # Add section line to legend
             line, = self.canvas.axes.plot(x, y, '-', color='blue', alpha=0.5)
             legend_elements.append(line)
             legend_labels.append('Section')
-            
+
             # Other CSV plot
             if self.other_version_csv is not None:
                 other_x = self.other_version_csv_x
@@ -987,48 +979,49 @@ class CrossSectionEditorApp(QMainWindow):
                 line, = self.canvas.axes.plot(other_x, other_y, '-', color='red', alpha=0.5)
                 legend_elements.append(line)
                 legend_labels.append(f'Other: {self.other_version_csv_name}')
-            
+
             # If n_column is provided and exists in the dataframe
             has_n_values = self.n_column and self.n_column in self.current_data.columns
+
             if has_n_values:
                 n_values = self.current_data[self.n_column]
                 # Handle categorical values
                 unique_values = n_values.dropna().unique()
                 colors = plt.get_cmap('tab10', len(unique_values))
                 color_map = {val: colors(i) for i, val in enumerate(unique_values)}
-                
+
                 # Create separate collections for positive and negative n_values
                 pos_mask = n_values >= 0
                 neg_mask = n_values < 0
-                
+
                 # Plot positive values with circles
                 if pos_mask.any():
-                    pos_colors = [color_map.get(val, 'gray') for val in n_values[pos_mask]]
+                    pos_colors = [color_map[val] if val in color_map else 'gray' for val in n_values[pos_mask]]
                     scatter_pos = self.canvas.axes.scatter(
-                        x[pos_mask], y[pos_mask], 
+                        x[pos_mask], y[pos_mask],
                         c=pos_colors, marker='o', picker=5
                     )
                     legend_elements.append(scatter_pos)
                     legend_labels.append('+ve N/M')
-                    
+
                     # Enable hover annotations for positive points
-                    self._setup_hover_annotations(scatter_pos, x[pos_mask], y[pos_mask], 
+                    self._setup_hover_annotations(scatter_pos, x[pos_mask], y[pos_mask],
                                                 n_values[pos_mask] if has_n_values else None)
-                
+
                 # Plot negative values with X markers
                 if neg_mask.any():
-                    neg_colors = [color_map.get(val, 'gray') for val in n_values[neg_mask]]
+                    neg_colors =  [color_map[val] if val in color_map else 'gray' for val in n_values[neg_mask]]
                     scatter_neg = self.canvas.axes.scatter(
-                        x[neg_mask], y[neg_mask], 
+                        x[neg_mask], y[neg_mask],
                         c=neg_colors, marker='x', picker=5
                     )
                     legend_elements.append(scatter_neg)
                     legend_labels.append('-ve N/M')
-                    
+
                     # Enable hover annotations for negative points
-                    self._setup_hover_annotations(scatter_neg, x[neg_mask], y[neg_mask], 
+                    self._setup_hover_annotations(scatter_neg, x[neg_mask], y[neg_mask],
                                                 n_values[neg_mask] if has_n_values else None)
-                    
+
                 # Store the scatter points (use the positive points collection if it exists, otherwise negative)
                 if pos_mask.any():
                     self.marker_points = scatter_pos
@@ -1040,19 +1033,19 @@ class CrossSectionEditorApp(QMainWindow):
                 self.marker_points = scatter
                 # Enable hover annotations for all points (without n_values)
                 self._setup_hover_annotations(scatter, x, y, None)
-                
+
                 # Add the default scatter to legend
                 legend_elements.append(scatter)
                 legend_labels.append('Points')
-            
+
             # Bank indicators
             bank_marker = None
-            
+
             # Shade left bank
             if self.left_bank is not None:
                 min_y, max_y = min(y), max(y)
                 min_x = min(x)
-                left_bank_patch = self.canvas.axes.fill_betweenx(
+                self.canvas.axes.fill_betweenx(
                     [min_y, max_y], min_x, self.left_bank,
                     color='gray', alpha=0.3
                 )
@@ -1062,12 +1055,12 @@ class CrossSectionEditorApp(QMainWindow):
                     bank_marker = self.canvas.axes.scatter(
                         left_x, left_y, c='black', marker='1', s=100, zorder=10
                     )
-            
+
             # Shade right bank
             if self.right_bank is not None:
                 min_y, max_y = min(y), max(y)
                 max_x = max(x)
-                right_bank_patch = self.canvas.axes.fill_betweenx(
+                self.canvas.axes.fill_betweenx(
                     [min_y, max_y], self.right_bank, max_x,
                     color='gray', alpha=0.3
                 )
@@ -1082,17 +1075,17 @@ class CrossSectionEditorApp(QMainWindow):
                         self.canvas.axes.scatter(
                             right_x, right_y, c='black', marker='1', s=100, zorder=10
                         )
-            
+
             # Add bank elements to legend if they exist
             if self.left_bank is not None or self.right_bank is not None:
                 bank_patch = Patch(facecolor='gray', alpha=0.3)
                 legend_elements.append(bank_patch)
                 legend_labels.append('Banks')
-                
+
                 if bank_marker is not None:
                     legend_elements.append(bank_marker)
                     legend_labels.append('Banks Marker')
-                    
+
             # Shade SHP/GPKG
             polygon_patch = None
             if self.overlaps:
@@ -1103,63 +1096,70 @@ class CrossSectionEditorApp(QMainWindow):
                         [min_y, max_y], in_value + min_x, out_value + min_x,
                         color='lightblue', alpha=0.3
                     )
-            
+
             # Add polygon patch to legend if it exists
             if polygon_patch is not None:
                 polygon_legend = Patch(facecolor='lightblue', alpha=0.3)
                 legend_elements.append(polygon_legend)
                 legend_labels.append('Polygon')
-                
+
             # Add labels
             self.canvas.axes.set_xlabel(self.x_column)
             self.canvas.axes.set_ylabel(self.y_column)
             self.canvas.axes.set_title(f"Cross Section: {self.file_list[self.current_file_index]}")
             self.canvas.axes.grid(True)
-            
+
             # Add the legend below the axis with up to 3 columns
             if legend_elements:
                 # Remove old legends
                 for legend in self.canvas.figure.legends:
                     legend.remove()
-        
+
                 total_items = len(legend_elements)
-                max_cols = 3  # Limit to a maximum of 3 columns
-                num_cols = min(total_items, max_cols)  # Use up to 3 columns, but not more than needed
-                num_rows = -(-total_items // num_cols)  # Ceiling division to determine rows
-                
+                max_cols = 3
+                num_cols = min(total_items, max_cols)
+
                 self.canvas.figure.legend(
-                    legend_elements, 
+                    legend_elements,
                     legend_labels,
-                    loc='outside lower center', 
-                    # bbox_to_anchor=(0.5, -0.25),  # Position legend below the plot
-                    ncol=num_cols,                # Up to 3 columns
-                    frameon=True,                  # Add a frame
-                    fontsize='small'                # Keep font small for better fit
+                    loc='outside lower center',
+                    ncol=num_cols,
+                    frameon=True,
+                    fontsize='small'
                 )
-                
-                # Adjust layout dynamically based on number of rows
-                # extra_space = 0.05 * num_rows  # Adjust bottom margin based on rows
+
                 plt.tight_layout()
-                # self.canvas.figure.subplots_adjust(bottom=0.15 + extra_space)  # More space for legend
-            
+
             # Restore the previous view if requested
             if preserve_view:
                 self.canvas.axes.set_xlim(xlim)
                 self.canvas.axes.set_ylim(ylim)
-                
+
             # Redraw
             self.canvas.draw_idle()
+
+    def _disconnect_previous_hover_events(self):
+        """Disconnect previous hover event handlers to prevent accumulation"""
+        if hasattr(self, '_hover_cid') and self._hover_cid:
+            try:
+                self.canvas.mpl_disconnect(self._hover_cid)
+                self._hover_cid = None
+            except Exception as e:
+                self.show_status_message(f"Error disconnecting hover event: {e}", 2000)
 
     def _setup_hover_annotations(self, scatter_points, x_values, y_values, n_values=None):
         """
         Setup hover annotations to display X, Y, and N values (if available) on hover
-        
+
         Parameters:
         scatter_points: The matplotlib scatter collection
         x_values: X coordinate values corresponding to scatter points
         y_values: Y coordinate values corresponding to scatter points
         n_values: N values (optional) corresponding to scatter points
         """
+        # Disconnect previous hover events first
+        self._disconnect_previous_hover_events()
+
         # Create annotation object that will be updated
         annot = self.canvas.axes.annotate(
             "", xy=(0, 0), xytext=(10, 10),
@@ -1180,46 +1180,45 @@ class CrossSectionEditorApp(QMainWindow):
                     # Update the position of the annotation
                     pos = scatter_points.get_offsets()[ind_idx]
                     annot.xy = pos
-                    
+
                     # Build the hover text
                     try:
                         x_val = x_values.iloc[ind_idx] if hasattr(x_values, 'iloc') else x_values[ind_idx]
                         y_val = y_values.iloc[ind_idx] if hasattr(y_values, 'iloc') else y_values[ind_idx]
-                        
+
                         # Format the hover text with X and Y values
                         hover_text = f"X: {x_val:.3f}\nZ: {y_val:.3f}"
-                        
+
                         # Add N value if available
                         if n_values is not None:
                             n_val = n_values.iloc[ind_idx] if hasattr(n_values, 'iloc') else n_values[ind_idx]
                             hover_text += f"\nN: {n_val:.3f}"
-                        
+
                         annot.set_text(hover_text)
                         annot.set_visible(True)
                         self.canvas.draw_idle()
                     except (IndexError, KeyError) as e:
-                        # Print error but don't crash
                         self.show_status_message(f"Hover annotation error: {e}", 3000)
                 elif vis:
                     annot.set_visible(False)
                     self.canvas.draw_idle()
 
         # Connect the hover event to the matplotlib figure
-        self.canvas.mpl_connect("motion_notify_event", hover)
-                
+        self._hover_cid = self.canvas.mpl_connect("motion_notify_event", hover)
+
     def on_plot_click(self, event):
         """Handle plot click events"""
         if event.button == 1 and event.xdata is not None and event.ydata is not None:
             # Find the nearest point
             nearest_idx = self.find_nearest_point(event.xdata, event.ydata)
-            
+
             if nearest_idx is not None:
                 # Get the x value of the nearest point
                 x_value = self.current_data.iloc[nearest_idx][self.x_column]
-                
+
                 # Check for modifiers
                 modifiers = QApplication.keyboardModifiers()
-                
+
                 if modifiers == Qt.KeyboardModifier.ControlModifier:
                     # Set left bank
                     self.set_left_bank(x_value, nearest_idx)
@@ -1228,97 +1227,121 @@ class CrossSectionEditorApp(QMainWindow):
                     # Set right bank
                     self.set_right_bank(x_value, nearest_idx)
                     self.show_status_message(f"Right bank set at X={x_value}", 1000)
+
+    def find_nearest_point(self, x_click, y_click):
+        """Find the index of the nearest point to the clicked location, accounting for axis scaling"""
+        if self.current_data is None or self.x_column is None or self.y_column is None:
+            return None
+
+        x_values = self.current_data[self.x_column].values
+        y_values = self.current_data[self.y_column].values
+
+        # Get the axes range for normalization
+        x_min, x_max = self.canvas.axes.get_xlim()
+        y_min, y_max = self.canvas.axes.get_ylim()
+        
+        # Avoid division by zero
+        x_range = max(x_max - x_min, 1e-10)
+        y_range = max(y_max - y_min, 1e-10)
+        
+        x_norm = (x_values - x_min) / x_range
+        y_norm = (y_values - y_min) / y_range
+        x_click_norm = (x_click - x_min) / x_range
+        y_click_norm = (y_click - y_min) / y_range
+        
+        # Calculate distances
+        distances = np.sqrt((x_norm - x_click_norm)**2 + (y_norm - y_click_norm)**2)
+
+        # Find the index of the minimum distance
+        nearest_idx = np.argmin(distances)
+
+        return nearest_idx
     
     def set_left_bank(self, x_value, index=None):
         """Set the left bank at the given X value"""
         self.left_bank = x_value
         self.left_bank_index = index
         self.update_plot(preserve_view=True)
-        
+
         # Update table highlighting
         self.update_cut_indices()
-    
+
     def set_right_bank(self, x_value, index=None):
         """Set the right bank at the given X value"""
         self.right_bank = x_value
         self.right_bank_index = index
         self.update_plot(preserve_view=True)
-        
+
         # Update table highlighting
         self.update_cut_indices()
-    
+
     def apply_banks(self):
         """Apply the bank settings to create a trimmed dataset"""
         if self.current_data is not None and (self.left_bank is not None or self.right_bank is not None):
             trimmed_data = self.current_data.copy()
-            
+
             # Apply left bank cut
             if self.left_bank is not None:
                 trimmed_data = trimmed_data[trimmed_data[self.x_column] >= self.left_bank]
-            
+
             # Apply right bank cut
             if self.right_bank is not None:
                 trimmed_data = trimmed_data[trimmed_data[self.x_column] <= self.right_bank]
-            
-            # Fix verticals if needed on save
-            # if self.fix_verticals_check.isChecked():
-            #     trimmed_data = self.fix_verticals(trimmed_data)
-            
+
             # Make leftmost X=0 if needed
             if self.make_leftmost_zero_check.isChecked():
                 trimmed_data = self.make_leftmost_zero(trimmed_data)
-            
+
             return trimmed_data
-        
+
         return self.current_data
-    
+
     def fix_verticals(self, df):
         """Fix vertical values by ensuring no duplicate X values"""
         if df.empty:
             return df
-        
+
         if self.x_column not in self.x_column_unsortable_preferences:
-            # Keep track of the last seen X value
             prev_x = df.loc[0, self.x_column]
 
             for i in range(1, len(df)):
                 if df.loc[i, self.x_column] <= prev_x:
-                    df.loc[i, self.x_column] = prev_x + 0.001  # Ensure it's strictly greater
+                    df.loc[i, self.x_column] = prev_x + 0.001
                 prev_x = df.loc[i, self.x_column]
-        
+
         return df
-    
+
     def make_leftmost_zero(self, df):
         """Make the left most active value equal X=0"""
         if df.empty:
             return df
-        
+
         min_x = df[self.x_column].min()
         df[self.x_column] = df[self.x_column] - min_x
         # print(f"min_x: {min_x}")
-        
+
         return df
-    
+
     def save_file(self):
         """Save the current file with the applied changes"""
         if self.current_data is None or self.current_file_index < 0:
             return
-        
+
         # Get the trimmed data
         trimmed_data = self.apply_banks()
-        
+
         # Determine the output filename
         input_path = self.csv_files[self.current_file_index]
         filename = os.path.basename(input_path)
         directory = os.path.dirname(input_path)
-        
+
         if self.version_combo.currentText() == "Increment Version":
             # Extract the base name and extension
             base, ext = os.path.splitext(filename)
-            
+
             # Remove existing version if it has it
             base = re.sub(r'_v\d+', '', base)
-            
+
             # Add new version
             version = self.version_edit.text()
             new_filename = f"{base}_{version}{ext}"
@@ -1326,80 +1349,80 @@ class CrossSectionEditorApp(QMainWindow):
         else:
             # Change in-place
             output_path = input_path
-        
+
         try:
             # Save the CSV
             trimmed_data.to_csv(output_path, index=False)
-            
+
             if self.version_combo.currentText() == "Increment Version":
                 self.other_version_csvs.append(output_path)
                 self.other_version_csvs_btn.setText(f"Loaded: {len(self.other_version_csvs)}")
-            
+
             # Save plot if requested
             if self.make_plot_file_check.isChecked():
                 plot_path = os.path.splitext(output_path)[0] + ".png"
                 self.canvas.fig.savefig(plot_path, dpi=300, bbox_inches='tight')
-            
+
             self.show_status_message(f"File saved to: {output_path}", 2000)
-            
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error saving file: {str(e)}")
-    
-    def on_file_selected(self, item):
+
+    def on_file_selected(self):
         """Handle selection of a file from the list"""
         # Check if we need to save current changes
         if self.autosave_check.isChecked() and self.current_data is not None:
             self.save_file()
-        
+
         # Load the selected file
         self.current_file_index = self.file_list_widget.currentRow()
         self.load_current_file()
-    
+
     def previous_file(self):
         """Load the previous file in the list"""
         if self.csv_files and self.current_file_index > 0:
             # Check if we need to save current changes
             if self.autosave_check.isChecked():
                 self.save_file()
-                
+
             self.current_file_index -= 1
             self.load_current_file()
-    
+
     def next_file(self):
         """Load the next file in the list"""
         if self.csv_files and self.current_file_index < len(self.csv_files) - 1:
             # Check if we need to save current changes
             if self.autosave_check.isChecked():
                 self.save_file()
-                
+
             self.current_file_index += 1
             self.load_current_file()
-    
+
     def undo(self):
         """Placeholder for undo functionality"""
         # To be implemented in a future version
         pass
-    
+
     def redo(self):
         """Placeholder for redo functionality"""
         # To be implemented in a future version
         pass
-    
+
     def select_other_version_csvs(self):
         """Opens a file dialog for the user to select multiple CSV files."""
         file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select CSV Files", "", 
+            self, "Select CSV Files", "",
             "CSV Files (*.csv);;All Files (*)"
         )
 
         if file_paths:
             self.other_version_csvs.extend(file_paths)
             self.other_version_csvs_btn.setText(f"Loaded: {len(self.other_version_csvs)}")
-            
+
     def select_vector_layer(self):
         """Opens a file dialog for the user to select a GPKG or SHP file."""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Vector Layer", "", 
+            self, "Select Vector Layer", "",
             "Vector Files (*.gpkg *.shp);;GeoPackage (*.gpkg);;Shapefile (*.shp)"
         )
 
@@ -1410,11 +1433,10 @@ class CrossSectionEditorApp(QMainWindow):
                 self.load_vector_layer(file_path, os.path.basename(file_path))
             else:
                 QMessageBox.warning(self, "Invalid File", "Please select a valid GPKG or SHP file.")
-        
+
     def load_gpkg_layer(self, file_path):
         """Loads a GPKG layer, allowing the user to choose if multiple layers exist."""
         layer_uris, layer_names = self.get_gpkg_layers(file_path)
-        
         # print(f"layer_uris: {layer_uris}")
 
         if not layer_uris:
@@ -1423,8 +1445,7 @@ class CrossSectionEditorApp(QMainWindow):
 
         # If multiple layers exist, prompt the user to select one
         if len(layer_uris) > 1:
-            selected_name, ok = QInputDialog.getItem(self, "Select Layer", 
-                                                    "Choose a layer:", layer_names, 0, False)
+            selected_name, ok = QInputDialog.getItem(self, "Select Layer", "Choose a layer:", layer_names, 0, False)
             if not ok or not selected_name:
                 return
             selected_index = layer_names.index(selected_name)
@@ -1432,9 +1453,9 @@ class CrossSectionEditorApp(QMainWindow):
         else:
             selected_name = layer_names[0]
             selected_uri = layer_uris[0]
-            
+
         self.load_vector_layer(selected_uri, selected_name)
-    
+
     def get_gpkg_layers(self, file_path):
         """Returns a list of layer names from a GPKG file."""
         layer = QgsVectorLayer(file_path, "", "ogr")
@@ -1447,14 +1468,14 @@ class CrossSectionEditorApp(QMainWindow):
         sublayers = layer.dataProvider().subLayers()
         uris = []
         names = []
-        for sublayer in sublayers: 
+        for sublayer in sublayers:
             name = sublayer.split('!!::!!')[1]
             names.append(name)
             uri = f"{file_path}|layername={name}"
             uris.append(uri)
-            
+
         return uris, names
-            
+
     def load_vector_layer(self, path, name=""):
         """Loads a vector layer (either from a GPKG or SHP file)."""
         try:
@@ -1468,7 +1489,7 @@ class CrossSectionEditorApp(QMainWindow):
             QgsProject.instance().addMapLayer(layer)
             self.polygon_layer = layer
             self.load_polygon_layer_btn.setText(f"Loaded: {layer.name()}")
-            
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Unable to load {path}, e: {str(e)}")
 
@@ -1476,9 +1497,9 @@ class CrossSectionEditorApp(QMainWindow):
         """Converts a point CSV file to a path layer"""
         if self.paths_layer and self.paths_layer.isValid():
             QgsProject.instance().removeMapLayer(self.paths_layer)
-        
+
         self.paths_layer = None
-        
+
         try:
             result = processing.run(
                 "native:pointstopath",
@@ -1501,7 +1522,7 @@ class CrossSectionEditorApp(QMainWindow):
             self.paths_layer = result.get('OUTPUT', None)
             self.paths_layer.setName(self.file_name)
             self.paths_layer.loadNamedStyle(self.paths_style)
-            
+
             # Get the extent of the new layer
             extent = self.paths_layer.extent()
 
@@ -1526,29 +1547,29 @@ class CrossSectionEditorApp(QMainWindow):
                 )
 
                 # Set the canvas extent with the new margin
-                canvas = self.iface.mapCanvas()  # Get the QGIS map canvas
-                canvas.setExtent(new_extent)  # Set the canvas extent to the new extent with margin
-                canvas.refresh()  # Refresh the canvas to apply the zoom
+                canvas = self.iface.mapCanvas()
+                canvas.setExtent(new_extent)
+                canvas.refresh()
             else:
                 self.show_status_message("Invalid extent: Unable to zoom.", 1000)
-            
+
             # Check if the layer with the given ID is loaded
             layers = QgsProject.instance().mapLayers()
             if self.paths_layer.id() not in layers:
                 QgsProject.instance().addMapLayer(self.paths_layer)
-        
+
         except Exception as e:
             self.show_status_message(f"Error: Unable to convert WKT CSV to paths: {e}", 3000)
             return None, None
-        
+
     def find_overlap_with_polygon(self):
         """Finds overlap between paths and a polygon layer using QGIS expressions."""
         if not self.paths_layer or not self.polygon_layer:
             self.show_status_message(f"Error: Invalid input layers", 3000)
             return None
-        
+
         expr = f"""
-        to_json(  
+        to_json(
             array_foreach(
                 array_foreach(
                     array_foreach(
@@ -1568,12 +1589,12 @@ class CrossSectionEditorApp(QMainWindow):
                                 geometry(@element)
                             ),
                             intersection(@geometry, @element)
-                        ),  
+                        ),
                         geometries_to_array(@element)
-                    ),  
+                    ),
                     array_foreach(
-                        @element, 
-                        array( 
+                        @element,
+                        array(
                             start_point(@element),
                             end_point(@element)
                         )
@@ -1586,16 +1607,16 @@ class CrossSectionEditorApp(QMainWindow):
                         'out', line_locate_point(@geometry, @element[-1])
                     )
                 )
-            ) 
+            )
         )
         """
         expression = QgsExpression(expr)
         if expression.hasParserError():
-            self.show_status_message(f"expr.parserErrorString(): {expr.parserErrorString()}", 3000)
-        
+            self.show_status_message(f"expression.parserErrorString(): {expression.parserErrorString()}", 3000)
+
         context = QgsExpressionContext()
         context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(self.paths_layer))
-        
+
         results = []
         for feature in self.paths_layer.getFeatures():
             context.setFeature(feature)
@@ -1603,9 +1624,9 @@ class CrossSectionEditorApp(QMainWindow):
             if expression.hasEvalError():
                 self.show_status_message(f"expression.evalErrorString(): {expression.evalErrorString()}")
             results.append(json.loads(result))
-        
-        print(f"results: {results}")
-        
+
+        # print(f"results: {results}")
+
         # Flatten the list and extract the 'in' and 'out' pairs
         self.overlaps = []
         for feature_result in results:
@@ -1613,11 +1634,11 @@ class CrossSectionEditorApp(QMainWindow):
                 for pair in sublist:
                     in_value = pair['in']
                     out_value = pair['out']
-                
+
                     # Ensure in_value < out_value, swap if necessary
                     if in_value > out_value:
                         in_value, out_value = out_value, in_value
-                
+
                     self.overlaps.append((in_value, out_value))
-                
-        print(f"self.overlaps: {self.overlaps}")
+
+        # print(f"self.overlaps: {self.overlaps}")

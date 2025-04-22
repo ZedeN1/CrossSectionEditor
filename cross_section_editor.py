@@ -28,6 +28,7 @@ from qgis.PyQt.QtWidgets import (
 # Standard library imports
 import os
 from io import StringIO
+from pathlib import Path
 import re
 import json
 import numpy as np
@@ -36,6 +37,7 @@ from collections import deque
 from ast import literal_eval
 
 # Third-party imports
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
@@ -270,6 +272,10 @@ class CrossSectionEditorApp(QMainWindow):
         self.num_paths = None
 
         # Plot
+        if matplotlib.__version__ >= '3.7.0':
+            self.plot_loc_to_use = 'outside lower center'
+        else:
+            self.plot_loc_to_use = 'lower center'
         self.marker_points = None
         self._hover_cid = None
 
@@ -1157,7 +1163,7 @@ class CrossSectionEditorApp(QMainWindow):
                 self.canvas.figure.legend(
                     legend_elements,
                     legend_labels,
-                    loc='outside lower center',
+                    loc=self.plot_loc_to_use,
                     ncol=num_cols,
                     frameon=True,
                     fontsize='small'
@@ -1555,20 +1561,17 @@ class CrossSectionEditorApp(QMainWindow):
                 # Load using easting/northing fields
                 easting_col = next((col for col in self.easting_column_preferences if col in header), None)
                 northing_col = next((col for col in self.northing_column_preferences if col in header), None)
-                uri = f"file:///{self.file_path}?type=csv&xField={easting_col}&yField={northing_col}&geometrytype=Point&skipLines={skiplines}"
+                
+                uri = f"{Path(self.file_path).as_uri()}?type=csv&xField={easting_col}&yField={northing_col}&geometrytype=Point&skipLines={skiplines}"
             else:
                 raise Exception(f"CSV must contain either a WKT column or both {self.easting_column_preferences} and {self.northing_column_preferences} fields.")
 
+            point_layer = QgsVectorLayer(uri, self.file_name, "delimitedtext")
+            
             result = processing.run(
                 "native:pointstopath",
                 {
-                    'INPUT': QgsProcessingFeatureSourceDefinition(
-                        uri,
-                        selectedFeaturesOnly=False,
-                        featureLimit=-1,
-                        flags=QgsProcessingFeatureSourceDefinition.FlagOverrideDefaultGeometryCheck,
-                        geometryCheck=QgsFeatureRequest.GeometryNoCheck
-                    ),
+                    'INPUT': point_layer,
                     'CLOSE_PATH': False,
                     'ORDER_EXPRESSION': f'to_real("{self.x_column}")',
                     'NATURAL_SORT': False,

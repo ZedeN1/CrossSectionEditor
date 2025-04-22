@@ -27,6 +27,7 @@ from qgis.PyQt.QtWidgets import (
 
 # Standard library imports
 import os
+from io import StringIO
 import re
 import json
 import numpy as np
@@ -43,7 +44,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 
 class EditablePandasModel(QAbstractTableModel):
     dataChanged = pyqtSignal(QModelIndex, QModelIndex)
-    
+
     def __init__(self, data):
         super().__init__()
         self._data = data
@@ -65,7 +66,7 @@ class EditablePandasModel(QAbstractTableModel):
             elif role == Qt.ItemDataRole.ForegroundRole:
                 if index.row() in self.cut_indices:
                     return QBrush(QColor(0, 0, 0))  # Black text color for cut rows
-            
+
         return None
 
     def headerData(self, section, orientation, role):
@@ -75,12 +76,12 @@ class EditablePandasModel(QAbstractTableModel):
             if orientation == Qt.Orientation.Vertical:
                 return str(self._data.index[section])
         return None
-    
+
     def flags(self, index):
         if index.isValid():
             return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable
         return Qt.ItemFlag.NoItemFlags
-    
+
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
         if index.isValid() and role == Qt.ItemDataRole.EditRole:
             try:
@@ -90,14 +91,14 @@ class EditablePandasModel(QAbstractTableModel):
                     converted_value = float(value)
                 else:
                     converted_value = value
-                
+
                 # Explicitly cast to the column's type if needed
                 column_dtype = self._data.iloc[:, index.column()].dtype
                 if pd.api.types.is_integer_dtype(column_dtype):
                     converted_value = int(converted_value)  # Convert to int if the column is of integer type
                 elif pd.api.types.is_float_dtype(column_dtype):
                     converted_value = float(converted_value)  # Convert to float if the column is of float type
-                
+
                 # Set the value in the dataframe
                 self._data.iloc[index.row(), index.column()] = converted_value
 
@@ -110,14 +111,14 @@ class EditablePandasModel(QAbstractTableModel):
             except (ValueError, TypeError):
                 return False
         return False
-    
+
     def set_cut_indices(self, indices):
         self.cut_indices = set(indices)
         top_left = self.index(0, 0)
         bottom_right = self.index(self.rowCount()-1, self.columnCount()-1)
         self.dataChanged.emit(top_left, bottom_right)
         self.layoutChanged.emit()  # Notify that the layout has changed
-        
+
     def get_dataframe(self):
         return self._data
 
@@ -181,18 +182,36 @@ class ColumnSettingsDialog(QDialog):
         x_unsortable_group.setLayout(x_unsortable_layout)
         layout.addWidget(x_unsortable_group)
 
+        # Easting Column preferences
+        easting_group = QGroupBox("Easting Column Preferences. (WKT takes preference)")
+        easting_layout = QVBoxLayout()
+        self.easting_text = QTextEdit()
+        easting_layout.addWidget(self.easting_text)
+        easting_group.setLayout(easting_layout)
+        layout.addWidget(easting_group)
+
+        # Northing Column preferences
+        northing_group = QGroupBox("Northing Column Preferences. (WKT takes preference)")
+        northing_layout = QVBoxLayout()
+        self.northing_text = QTextEdit()
+        northing_layout.addWidget(self.northing_text)
+        northing_group.setLayout(northing_layout)
+        layout.addWidget(northing_group)
+
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def set_values(self, x_prefs, y_prefs, n_prefs, x_unsortable_prefs):
+    def set_values(self, x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs):
         """Set the dialog values"""
         self.x_text.setPlainText(str(x_prefs))
         self.y_text.setPlainText(str(y_prefs))
         self.n_text.setPlainText(str(n_prefs))
         self.x_unsortable_text.setPlainText(str(x_unsortable_prefs))
+        self.easting_text.setPlainText(str(easting_prefs))
+        self.northing_text.setPlainText(str(northing_prefs))
 
     def get_values(self):
         """Get the dialog values"""
@@ -201,7 +220,9 @@ class ColumnSettingsDialog(QDialog):
             y_prefs = literal_eval(self.y_text.toPlainText())
             n_prefs = literal_eval(self.n_text.toPlainText())
             x_unsortable_prefs = literal_eval(self.x_unsortable_text.toPlainText())
-            return x_prefs, y_prefs, n_prefs, x_unsortable_prefs
+            easting_prefs = literal_eval(self.easting_text.toPlainText())
+            northing_prefs = literal_eval(self.northing_text.toPlainText())
+            return x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error parsing preferences: {str(e)}")
             return None, None, True
@@ -238,6 +259,8 @@ class CrossSectionEditorApp(QMainWindow):
         self.y_column_preferences = ['Y', 'y', 'Z', 'z', 'H', 'h', 1]
         self.n_column_preferences = ['N', 'n', 'M', 'm']
         self.x_column_unsortable_preferences = ['W']
+        self.easting_column_preferences = ['Easting', 'easting']
+        self.northing_column_preferences = ['Northing', 'northing']
 
         # Cross section overlaps with SHP/GPKG
         self.polygon_layer = None
@@ -527,15 +550,17 @@ class CrossSectionEditorApp(QMainWindow):
     def show_column_settings(self):
         """Show dialog for column settings"""
         dialog = ColumnSettingsDialog(self)
-        dialog.set_values(self.x_column_preferences, self.y_column_preferences, self.n_column_preferences, self.x_column_unsortable_preferences)
+        dialog.set_values(self.x_column_preferences, self.y_column_preferences, self.n_column_preferences, self.x_column_unsortable_preferences, self.easting_column_preferences, self.northing_column_preferences)
 
         if dialog.exec():
-            x_prefs, y_prefs, n_prefs, x_unsortable_prefs = dialog.get_values()
-            if x_prefs is not None and y_prefs is not None and n_prefs is not None and x_unsortable_prefs is not None:
+            x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs = dialog.get_values()
+            if x_prefs is not None and y_prefs is not None and n_prefs is not None and x_unsortable_prefs is not None and easting_prefs is not None and northing_prefs is not None:
                 self.x_column_preferences = x_prefs
                 self.y_column_preferences = y_prefs
                 self.n_column_preferences = n_prefs
                 self.x_column_unsortable_preferences = x_unsortable_prefs
+                self.easting_column_preferences = easting_prefs
+                self.northing_column_preferences = northing_prefs
 
                 # Reload the current file with new settings
                 if self.current_data is not None:
@@ -692,7 +717,7 @@ class CrossSectionEditorApp(QMainWindow):
 
         try:
             has_header = self.detect_header(self.other_version_csv)
-            other_df = pd.read_csv(self.other_version_csv, index_col=None, header=0 if has_header else None)
+            other_df = pd.read_csv(self.other_version_csv, index_col=None, header=0 if has_header else None, comment='!')
 
             # Ensure numeric column indices are treated as integers
             try:
@@ -734,7 +759,7 @@ class CrossSectionEditorApp(QMainWindow):
                 self.has_header = self.detect_header(self.file_path)
 
                 # Read the full CSV with correct header setting
-                df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None)
+                df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None, comment='!')
 
                 # Ensure numeric column indices are treated as integers
                 try:
@@ -800,8 +825,18 @@ class CrossSectionEditorApp(QMainWindow):
             self.load_current_file()
 
     def detect_header(self, file_path):
-        """Determine if the CSV file has a header by analyzing the first few rows."""
-        sample_df = pd.read_csv(file_path, nrows=3, header=None, dtype=str)
+        """Determine if the CSV file has a header by analyzing the first few non-comment rows."""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # Read lines and filter out comments starting with '!'
+            valid_lines = [line for line in f if not line.strip().startswith('!')]
+
+        # If not enough data to check, assume no header
+        if len(valid_lines) < 2:
+            return False
+
+        # Use StringIO to treat filtered lines as a file-like object for pandas
+        sample_data = StringIO(''.join(valid_lines[:3]))  # check first 3 non-comment lines
+        sample_df = pd.read_csv(sample_data, header=None, dtype=str)
 
         first_row = sample_df.iloc[0]
         second_row = sample_df.iloc[1] if len(sample_df) > 1 else None
@@ -1239,16 +1274,16 @@ class CrossSectionEditorApp(QMainWindow):
         # Get the axes range for normalization
         x_min, x_max = self.canvas.axes.get_xlim()
         y_min, y_max = self.canvas.axes.get_ylim()
-        
+
         # Avoid division by zero
         x_range = max(x_max - x_min, 1e-10)
         y_range = max(y_max - y_min, 1e-10)
-        
+
         x_norm = (x_values - x_min) / x_range
         y_norm = (y_values - y_min) / y_range
         x_click_norm = (x_click - x_min) / x_range
         y_click_norm = (y_click - y_min) / y_range
-        
+
         # Calculate distances
         distances = np.sqrt((x_norm - x_click_norm)**2 + (y_norm - y_click_norm)**2)
 
@@ -1256,7 +1291,7 @@ class CrossSectionEditorApp(QMainWindow):
         nearest_idx = np.argmin(distances)
 
         return nearest_idx
-    
+
     def set_left_bank(self, x_value, index=None):
         """Set the left bank at the given X value"""
         self.left_bank = x_value
@@ -1501,11 +1536,34 @@ class CrossSectionEditorApp(QMainWindow):
         self.paths_layer = None
 
         try:
+            # Detect if WKT column exists
+            with open(self.file_path, 'r', encoding='utf-8') as f:
+                skiplines = 0
+                for line in f:
+                    if line.strip().startswith('!'):
+                        skiplines += 1
+                    if line.strip() and not line.strip().startswith('!'):
+                        header = line.strip().split(',')
+                        break
+
+            header = [h.strip().lower() for h in header]
+            has_wkt = 'wkt' in header
+            if has_wkt:
+                # Load using WKT geometry
+                uri = f"{self.file_path}|geometrytype=Point|uniqueGeometryType=yes"
+            elif any(easting_col in header for easting_col in self.easting_column_preferences) and any(northing_col in header for northing_col in self.northing_column_preferences):
+                # Load using easting/northing fields
+                easting_col = next((col for col in self.easting_column_preferences if col in header), None)
+                northing_col = next((col for col in self.northing_column_preferences if col in header), None)
+                uri = f"file:///{self.file_path}?type=csv&xField={easting_col}&yField={northing_col}&geometrytype=Point&skipLines={skiplines}"
+            else:
+                raise Exception(f"CSV must contain either a WKT column or both {self.easting_column_preferences} and {self.northing_column_preferences} fields.")
+
             result = processing.run(
                 "native:pointstopath",
                 {
                     'INPUT': QgsProcessingFeatureSourceDefinition(
-                        f'{self.file_path}|geometrytype=Point|uniqueGeometryType=yes',
+                        uri,
                         selectedFeaturesOnly=False,
                         featureLimit=-1,
                         flags=QgsProcessingFeatureSourceDefinition.FlagOverrideDefaultGeometryCheck,

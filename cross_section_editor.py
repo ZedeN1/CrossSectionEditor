@@ -754,7 +754,7 @@ class CrossSectionEditorApp(QMainWindow):
             try:
                 self.interpolated_left_idx = None
                 self.interpolated_right_idx = None
-                
+
                 # Load the CSV file
                 self.file_path = self.csv_files[self.current_file_index]
                 self.file_name = os.path.splitext(os.path.basename(self.file_path))[0]
@@ -770,7 +770,7 @@ class CrossSectionEditorApp(QMainWindow):
                 self.has_header = self.detect_header(self.file_path)
 
                 # Read the full CSV with correct header setting
-                df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None, comment='!')
+                df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None)
 
                 # Ensure numeric column indices are treated as integers
                 try:
@@ -780,6 +780,41 @@ class CrossSectionEditorApp(QMainWindow):
 
                 # Detect X and Y columns *after* reading the full data
                 self.x_column, self.y_column, self.n_column = self.detect_xy_columns(df)
+                
+                # Detect and set bank positions based on the first column
+                first_col = df.columns[0]
+                if df[first_col].astype(str).str.startswith('!').any():
+                    # Rows that do NOT start with '!' are considered active
+                    active_mask = ~df[first_col].astype(str).str.startswith('!')
+                    active_indices = df[active_mask].index
+                    
+                    if not active_indices.empty:
+                        first_active_idx = active_indices[0]
+                        last_active_idx = active_indices[-1]
+                        
+                        # Check for any inactive rows before the first active one
+                        if any(~active_mask.loc[:first_active_idx - 1]):
+                            self.left_bank_index = first_active_idx
+                            self.left_bank = df.loc[first_active_idx, self.x_column]
+                        else:
+                            self.left_bank_index = None
+                            self.left_bank = None
+
+                        # Check for any inactive rows after the last active one
+                        if any(~active_mask.loc[last_active_idx + 1:]):
+                            self.right_bank_index = last_active_idx
+                            self.right_bank = df.loc[last_active_idx, self.x_column]
+                        else:
+                            self.right_bank_index = None
+                            self.right_bank = None
+                    else:
+                        # No valid active rows
+                        self.left_bank = self.right_bank = None
+                        self.left_bank_index = self.right_bank_index = None
+                else:
+                    # No deactivated rows
+                    self.left_bank = self.right_bank = None
+                    self.left_bank_index = self.right_bank_index = None
 
                 # Apply fix verticals if needed
                 if self.fix_verticals_check.isChecked():
@@ -791,12 +826,6 @@ class CrossSectionEditorApp(QMainWindow):
 
                 # Set the current data
                 self.current_data = df.copy()
-
-                # Reset bank positions
-                self.left_bank = None
-                self.right_bank = None
-                self.left_bank_index = None
-                self.right_bank_index = None
 
                 # Select the current file in the list
                 self.file_list_widget.setCurrentRow(self.current_file_index)
@@ -1414,10 +1443,18 @@ class CrossSectionEditorApp(QMainWindow):
         if self.current_data is not None and (self.left_bank is not None or self.right_bank is not None):
             trimmed_data = self.current_data.copy()
 
-            # Create or update a comment column to store the '!' flag
+            # Clean any old bank markers from the original first column
+            first_col = trimmed_data.columns[0]
+            trimmed_data[first_col] = trimmed_data[first_col].astype(str).str.replace(r'^\s*[!#]{1,2}\s*', '', regex=True)
+
+            # Create or update a comment column to store the '!# ' flag
             trim_col = 'Trim'
             if trim_col not in trimmed_data.columns:
-                trimmed_data[trim_col] = False
+                trimmed_data[trim_col] = ''
+
+            # Reorder columns to make 'Trim' the first column
+            cols = [trim_col] + [col for col in trimmed_data.columns if col != trim_col]
+            trimmed_data = trimmed_data[cols]
 
             # Identify rows outside the banks
             outside_mask = pd.Series(False, index=trimmed_data.index)
@@ -1426,7 +1463,7 @@ class CrossSectionEditorApp(QMainWindow):
             if self.right_bank is not None:
                 outside_mask |= trimmed_data[self.x_column] > self.right_bank
 
-            trimmed_data.loc[outside_mask, trim_col] = True
+            trimmed_data.loc[outside_mask, trim_col] = '!# '
 
             # Make leftmost X=0 if needed
             if self.make_leftmost_zero_check.isChecked():
@@ -1491,19 +1528,8 @@ class CrossSectionEditorApp(QMainWindow):
             output_path = input_path
 
         try:
-            # Save the CSV and comment 'Trim' == True columns
-            output_data = trimmed_data.drop(columns=['Trim'], errors='ignore')
-
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                # Write header
-                f.write(','.join(output_data.columns) + '\n')
-                
-                # Iterate and write rows, commenting those marked with Trim == True
-                for idx, row in output_data.iterrows():
-                    line = ','.join(row.where(pd.notnull(row), '').astype(str))
-                    if trimmed_data.at[idx, 'Trim']:
-                        line = '!' + line
-                    f.write(line + '\n')
+            # Check if 'Trim' column exists
+            trimmed_data.to_csv(output_path, index=False)
 
             if self.version_combo.currentText() == "Increment Version":
                 self.other_version_csvs.append(output_path)

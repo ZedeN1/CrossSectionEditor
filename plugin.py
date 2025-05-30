@@ -124,7 +124,7 @@ class CrossSectionEditorPlugin:
             
             # For debugging:
             # import builtins
-            # builtins.qgis_editor = self.editor_app
+            # builtins.section_editor = self.editor_app
         
         except Exception as e:
             QMessageBox.critical(

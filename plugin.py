@@ -121,6 +121,11 @@ class CrossSectionEditorPlugin:
             # Create and show your dialog. Note: we're using your existing app
             self.editor_app = CrossSectionEditorApp(self.iface)
             self.editor_app.show()
+            
+            # For debugging:
+            # import builtins
+            # builtins.qgis_editor = self.editor_app
+        
         except Exception as e:
             QMessageBox.critical(
                 None, 

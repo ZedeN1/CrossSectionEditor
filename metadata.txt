@@ -2,7 +2,7 @@
 name=Cross Section Editor
 qgisMinimumVersion=3.0
 description=A plugin for editing cross section data. Primarily for ESTRY-TUFLOW cross-sections.
-version=0.03
+version=0.04
 author=Pavel Diptan
 email=pdiptan@gmail.com
 

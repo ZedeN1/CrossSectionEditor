@@ -16,7 +16,7 @@ from processing.core.Processing import Processing
 
 # PyQt imports
 from qgis.PyQt.QtCore import (Qt, QAbstractTableModel, QModelIndex, pyqtSignal, QPoint, QTimer)
-from qgis.PyQt.QtGui import (QKeySequence, QColor, QBrush)
+from qgis.PyQt.QtGui import (QKeySequence, QColor, QBrush, QCursor)
 from qgis.PyQt.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter,
     QTableView, QHeaderView, QPushButton, QFileDialog, QListWidget, QLabel,
@@ -146,7 +146,7 @@ class ColumnSettingsDialog(QDialog):
         # Help text
         help_label = QLabel(
             "List of expected column names in descending order of preference.\n"
-            "Column names are represented as strings (e.g., 'X'), while column indices are integers (0-based).\n"
+            "Column names are represented as case-insensitive strings (e.g., 'x'), while column indices are integers (0-based).\n"
             "First match will be applied on per file basis."
         )
         help_label.setWordWrap(True)
@@ -255,14 +255,16 @@ class CrossSectionEditorApp(QMainWindow):
         self.y_column = None
         self.n_column = None
         self.has_header = True
+        self.interpolated_left_idx = None
+        self.interpolated_right_idx = None
 
         # Column preferences (default)
-        self.x_column_preferences = ['X', 'x', 'X (m)', 'Chainage', 'W', 0]
-        self.y_column_preferences = ['Y', 'y', 'Z', 'z', 'H', 'h', 1]
-        self.n_column_preferences = ['N', 'n', 'M', 'm']
-        self.x_column_unsortable_preferences = ['W']
-        self.easting_column_preferences = ['Easting', 'easting']
-        self.northing_column_preferences = ['Northing', 'northing']
+        self.x_column_preferences = ['x', 'x (m)', 'chainage', 'w', 0]
+        self.y_column_preferences = ['y', 'z', 'h', 1]
+        self.n_column_preferences = ['n', 'm', 'Mannings n']
+        self.x_column_unsortable_preferences = ['w']
+        self.easting_column_preferences = ['easting']
+        self.northing_column_preferences = ['northing']
 
         # Cross section overlaps with SHP/GPKG
         self.polygon_layer = None
@@ -394,11 +396,11 @@ class CrossSectionEditorApp(QMainWindow):
         self.other_version_csvs_btn.clicked.connect(self.select_other_version_csvs)
 
         # Static helper text
-        self.left_bank_ctrl = QLabel("Ctrl + Click on plot to set Left Bank")
+        self.left_bank_ctrl = QLabel("Ctrl + Click on plot to set Left Bank (Snapped)")
         header_layout.addWidget(self.left_bank_ctrl, 3, 0, 1, 2)
-        self.right_bank_alt = QLabel("Alt + Click on plot to set Right Bank")
+        self.right_bank_alt = QLabel("Alt + Click on plot to set Right Bank (Snapped)")
         header_layout.addWidget(self.right_bank_alt, 3, 2, 1, 2)
-        self.table_right_click = QLabel("Right Click on table view to set banks")
+        self.table_right_click = QLabel("Right Click on table/plot view to set banks (Interpolated)")
         header_layout.addWidget(self.table_right_click, 3, 4, 1, 2)
 
         # Add the header to the main layout
@@ -750,6 +752,9 @@ class CrossSectionEditorApp(QMainWindow):
         """Load the current file into the table and plot"""
         if 0 <= self.current_file_index < len(self.csv_files):
             try:
+                self.interpolated_left_idx = None
+                self.interpolated_right_idx = None
+                
                 # Load the CSV file
                 self.file_path = self.csv_files[self.current_file_index]
                 self.file_name = os.path.splitext(os.path.basename(self.file_path))[0]
@@ -856,72 +861,32 @@ class CrossSectionEditorApp(QMainWindow):
 
     def detect_xy_columns(self, df):
         """Attempt to detect X and Y columns from preferences"""
-        # Find X column
-        x_column = None
-        for col in self.x_column_preferences:
-            if isinstance(col, int):
-                # This is a numeric index
-                if col < len(df.columns):
-                    x_column = df.columns[col]
-                    break
-            elif col in df.columns:  # Direct check if the column name exists
-                # This is a column name
-                x_column = col
-                break
-            elif str(col) in map(str, df.columns):
-                # This is a column name
-                matching_cols = [c for c in df.columns if str(c) == str(col)]
-                if matching_cols:
-                    x_column = matching_cols[0]
-                    break
+        def match_column(preferences, df_columns):
+            col_map = {str(c).lower(): c for c in df_columns}
+            for pref in preferences:
+                if isinstance(pref, int):
+                    # This is a numeric index
+                    if pref < len(df_columns):
+                        return df_columns[pref]
+                else:
+                    # This is a column name
+                    key = str(pref).lower()
+                    if key in col_map:
+                        return col_map[key]
+            return None
 
-        # If no X column found, use the first column
+        # Find X column
+        x_column = match_column(self.x_column_preferences, df.columns)
         if x_column is None and not df.empty:
             QMessageBox.warning(self, "Warning", f"No X column from preferences matches datafile: {self.x_column_preferences}")
 
         # Find Y column
-        y_column = None
-        for col in self.y_column_preferences:
-            if isinstance(col, int):
-                # This is a numeric index
-                if col < len(df.columns):
-                    y_column = df.columns[col]
-                    break
-            elif col in df.columns:  # Direct check if the column name exists
-                # This is a column name
-                y_column = col
-                break
-            elif str(col) in map(str, df.columns):
-                # This is a column name
-                matching_cols = [c for c in df.columns if str(c) == str(col)]
-                if matching_cols:
-                    y_column = matching_cols[0]
-                    break
-
-        # If no Y column found, use the second column
+        y_column = match_column(self.y_column_preferences, df.columns)
         if y_column is None and not df.empty:
             QMessageBox.warning(self, "Warning", f"No Y column from preferences matches datafile: {self.y_column_preferences}")
 
         # Find N column
-        n_column = None
-        for col in self.n_column_preferences:
-            if isinstance(col, int):
-                # This is a numeric index
-                if col < len(df.columns):
-                    n_column = df.columns[col]
-                    break
-            elif col in df.columns:  # Direct check if the column name exists
-                # This is a column name
-                n_column = col
-                break
-            elif str(col) in map(str, df.columns):
-                # This is a column name
-                matching_cols = [c for c in df.columns if str(c) == str(col)]
-                if matching_cols:
-                    n_column = matching_cols[0]
-                    break
-
-        # If no N column found, use the second column
+        n_column = match_column(self.n_column_preferences, df.columns)
         if n_column is None and not df.empty:
             self.show_status_message(f"No N column from preferences matches datafile: {self.n_column_preferences}", 2000)
 
@@ -1246,19 +1211,30 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Connect the hover event to the matplotlib figure
         self._hover_cid = self.canvas.mpl_connect("motion_notify_event", hover)
-
+            
     def on_plot_click(self, event):
         """Handle plot click events"""
+        # Left click
         if event.button == 1 and event.xdata is not None and event.ydata is not None:
+            # Check for modifiers
+            modifiers = QApplication.keyboardModifiers()
+            
+            # Remove previous interpolated rows before finding nearest point
+            if modifiers == Qt.KeyboardModifier.ControlModifier and self.interpolated_left_idx is not None:
+                self.current_data = self.current_data.drop(index=self.interpolated_left_idx, errors='ignore')
+                self.interpolated_left_idx = None
+                self.update_table()
+            elif modifiers == Qt.KeyboardModifier.AltModifier and self.interpolated_right_idx is not None:
+                self.current_data = self.current_data.drop(index=self.interpolated_right_idx, errors='ignore')
+                self.interpolated_right_idx = None
+                self.update_table()
+            
             # Find the nearest point
             nearest_idx = self.find_nearest_point(event.xdata, event.ydata)
 
             if nearest_idx is not None:
                 # Get the x value of the nearest point
                 x_value = self.current_data.iloc[nearest_idx][self.x_column]
-
-                # Check for modifiers
-                modifiers = QApplication.keyboardModifiers()
 
                 if modifiers == Qt.KeyboardModifier.ControlModifier:
                     # Set left bank
@@ -1269,6 +1245,123 @@ class CrossSectionEditorApp(QMainWindow):
                     self.set_right_bank(x_value, nearest_idx)
                     self.show_status_message(f"Right bank set at X={x_value}", 1000)
 
+        # Right click
+        elif event.button == 3 and event.xdata is not None:
+            self.show_plot_context_menu(event)
+
+    def show_plot_context_menu(self, event):
+        """Show right click context menu"""
+        menu = QMenu()
+        add_left_action = menu.addAction("Set LB")
+        add_right_action = menu.addAction("Set RB")
+
+        action = menu.exec_(QCursor.pos())
+
+        if action == add_left_action:
+            self.interpolate_and_set_bank(event.xdata, bank='left')
+        elif action == add_right_action:
+            self.interpolate_and_set_bank(event.xdata, bank='right')
+
+    def interpolate_and_set_bank(self, x_value, bank='left'):
+        """Insert an interpolated row at x_value and set as left/right bank"""
+        df = self.current_data
+        x_col = self.x_column
+        if df is None or x_col not in df.columns:
+            return
+        
+        # Find bounding rows
+        prev_row = df[df[x_col] <= x_value].tail(1)
+        next_row = df[df[x_col] >= x_value].head(1)
+        if prev_row.empty or next_row.empty:
+            return  # x_value is out of bounds
+        
+        prev_idx = prev_row.index[0]
+        next_idx = next_row.index[0]
+        
+        if prev_idx == next_idx:
+            return  # x matches an existing point
+        
+        # Remove previous interpolated bank row if exists
+        if bank == 'left' and self.interpolated_left_idx is not None:
+            self.current_data = self.current_data.drop(index=self.interpolated_left_idx, errors='ignore')
+            # Reset df reference after potential row removal
+            df = self.current_data
+        elif bank == 'right' and self.interpolated_right_idx is not None:
+            self.current_data = self.current_data.drop(index=self.interpolated_right_idx, errors='ignore')
+            # Reset df reference after potential row removal
+            df = self.current_data
+        
+        # Find the insertion position in the current dataframe
+        insert_position = None
+        for i in range(len(df)):
+            if df.iloc[i][x_col] > x_value:
+                insert_position = i
+                break
+        
+        if insert_position is None:
+            insert_position = len(df)  # Insert at end
+        
+        # Get the bounding rows for interpolation (may have changed after deletion)
+        prev_row = df[df[x_col] <= x_value].tail(1)
+        next_row = df[df[x_col] >= x_value].head(1)
+        
+        if prev_row.empty or next_row.empty:
+            return  # x_value is out of bounds after deletion
+        
+        row1 = prev_row.iloc[0]
+        row2 = next_row.iloc[0]
+        
+        # Create interpolated row
+        new_row = {}
+        for col in df.columns:
+            if col == x_col:
+                new_row[col] = x_value
+                continue
+            
+            col_dtype = df[col].dtype
+            v1, v2 = row1[col], row2[col]
+            
+            if np.issubdtype(col_dtype, np.number):
+                # Linear interpolation for numeric columns
+                x1, x2 = row1[x_col], row2[x_col]
+                ratio = (x_value - x1) / (x2 - x1)
+                interpolated = v1 + ratio * (v2 - v1)
+                # Preserve integer type if both original values are int
+                if np.issubdtype(col_dtype, np.integer):
+                    interpolated = int(round(interpolated))
+                new_row[col] = interpolated
+            elif pd.api.types.is_bool_dtype(col_dtype):
+                # For booleans: keep if same, else False
+                new_row[col] = v1 if v1 == v2 else False
+            elif np.issubdtype(col_dtype, np.object_) and isinstance(v1, str) and v1 == v2:
+                # Copy string if both are identical
+                new_row[col] = v1
+            else:
+                # Mismatched or unsupported types
+                new_row[col] = np.nan
+        
+        # Create new dataframe with the interpolated row inserted
+        df_above = df.iloc[:insert_position].copy()
+        df_below = df.iloc[insert_position:].copy()
+        new_row_df = pd.DataFrame([new_row])
+        
+        # Concatenate and reset index to get clean sequential indexing
+        self.current_data = pd.concat([df_above, new_row_df, df_below], ignore_index=True)
+        
+        self.update_table()
+        
+        # Find new row position by x_value (should be at insert_position)
+        new_pos = insert_position
+        
+        if bank == 'left':
+            self.set_left_bank(x_value, new_pos)
+            self.interpolated_left_idx = new_pos
+            self.show_status_message(f"Left bank set at X={x_value}", 1000)
+        elif bank == 'right':
+            self.set_right_bank(x_value, new_pos)
+            self.interpolated_right_idx = new_pos
+            self.show_status_message(f"Right bank set at X={x_value}", 1000)
+        
     def find_nearest_point(self, x_click, y_click):
         """Find the index of the nearest point to the clicked location, accounting for axis scaling"""
         if self.current_data is None or self.x_column is None or self.y_column is None:
@@ -1321,13 +1414,19 @@ class CrossSectionEditorApp(QMainWindow):
         if self.current_data is not None and (self.left_bank is not None or self.right_bank is not None):
             trimmed_data = self.current_data.copy()
 
-            # Apply left bank cut
-            if self.left_bank is not None:
-                trimmed_data = trimmed_data[trimmed_data[self.x_column] >= self.left_bank]
+            # Create or update a comment column to store the '!' flag
+            trim_col = 'Trim'
+            if trim_col not in trimmed_data.columns:
+                trimmed_data[trim_col] = False
 
-            # Apply right bank cut
+            # Identify rows outside the banks
+            outside_mask = pd.Series(False, index=trimmed_data.index)
+            if self.left_bank is not None:
+                outside_mask |= trimmed_data[self.x_column] < self.left_bank
             if self.right_bank is not None:
-                trimmed_data = trimmed_data[trimmed_data[self.x_column] <= self.right_bank]
+                outside_mask |= trimmed_data[self.x_column] > self.right_bank
+
+            trimmed_data.loc[outside_mask, trim_col] = True
 
             # Make leftmost X=0 if needed
             if self.make_leftmost_zero_check.isChecked():
@@ -1392,8 +1491,19 @@ class CrossSectionEditorApp(QMainWindow):
             output_path = input_path
 
         try:
-            # Save the CSV
-            trimmed_data.to_csv(output_path, index=False)
+            # Save the CSV and comment 'Trim' == True columns
+            output_data = trimmed_data.drop(columns=['Trim'], errors='ignore')
+
+            with open(output_path, 'w', newline='', encoding='utf-8') as f:
+                # Write header
+                f.write(','.join(output_data.columns) + '\n')
+                
+                # Iterate and write rows, commenting those marked with Trim == True
+                for idx, row in output_data.iterrows():
+                    line = ','.join(row.where(pd.notnull(row), '').astype(str))
+                    if trimmed_data.at[idx, 'Trim']:
+                        line = '!' + line
+                    f.write(line + '\n')
 
             if self.version_combo.currentText() == "Increment Version":
                 self.other_version_csvs.append(output_path)
@@ -1552,22 +1662,32 @@ class CrossSectionEditorApp(QMainWindow):
                         header = line.strip().split(',')
                         break
 
-            header = [h.strip().lower() for h in header]
-            has_wkt = 'wkt' in header
+            header_lc = [h.strip().lower() for h in header]
+            header_map = {h.strip().lower(): h.strip() for h in header}  # lowercase -> original case
+
+            has_wkt = 'wkt' in header_lc
             if has_wkt:
                 # Load using WKT geometry
-                uri = f"{self.file_path}|geometrytype=Point|uniqueGeometryType=yes"
-            elif any(easting_col in header for easting_col in self.easting_column_preferences) and any(northing_col in header for northing_col in self.northing_column_preferences):
-                # Load using easting/northing fields
-                easting_col = next((col for col in self.easting_column_preferences if col in header), None)
-                northing_col = next((col for col in self.northing_column_preferences if col in header), None)
-                
+                wkt_col = header_map['wkt']
+                uri = f"{Path(self.file_path).as_uri()}?type=csv&geometrytype=Point&skipLines={skiplines}&wktField={wkt_col}"
+            elif any(col.lower() in header_lc for col in self.easting_column_preferences) and any(col.lower() in header_lc for col in self.northing_column_preferences):
+                # Find matching column names using case-insensitive match
+                easting_col_lc = next((col.lower() for col in self.easting_column_preferences if col.lower() in header_lc), None)
+                northing_col_lc = next((col.lower() for col in self.northing_column_preferences if col.lower() in header_lc), None)
+
+                # Use the original case from header
+                easting_col = header_map[easting_col_lc]
+                northing_col = header_map[northing_col_lc]
+
                 uri = f"{Path(self.file_path).as_uri()}?type=csv&xField={easting_col}&yField={northing_col}&geometrytype=Point&skipLines={skiplines}"
             else:
                 raise Exception(f"CSV must contain either a WKT column or both {self.easting_column_preferences} and {self.northing_column_preferences} fields.")
 
             point_layer = QgsVectorLayer(uri, self.file_name, "delimitedtext")
-            
+
+            if not point_layer.isValid():
+                raise Exception(f"Invalid point layer: {self.file_name}, URI: {uri}")
+
             result = processing.run(
                 "native:pointstopath",
                 {
@@ -1612,7 +1732,7 @@ class CrossSectionEditorApp(QMainWindow):
                 canvas.setExtent(new_extent)
                 canvas.refresh()
             else:
-                self.show_status_message("Invalid extent: Unable to zoom.", 1000)
+                raise Exception("Invalid extent: Unable to zoom.")
 
             # Check if the layer with the given ID is loaded
             layers = QgsProject.instance().mapLayers()

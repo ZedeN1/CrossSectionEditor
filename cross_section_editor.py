@@ -1458,10 +1458,28 @@ class CrossSectionEditorApp(QMainWindow):
 
             # Identify rows outside the banks
             outside_mask = pd.Series(False, index=trimmed_data.index)
+            
+            # --- FIX: Ensure X column is numeric before comparison ---
+            # We use errors='coerce' to turn any non-parseable strings into NaN
+            # so they don't crash the comparison.
+            x_values = pd.to_numeric(trimmed_data[self.x_column], errors='coerce')
+
             if self.left_bank is not None:
-                outside_mask |= trimmed_data[self.x_column] < self.left_bank
+                # Ensure the bank value is a float for the comparison
+                try:
+                    lb_value = float(self.left_bank)
+                    outside_mask |= x_values < lb_value
+                except (ValueError, TypeError):
+                    pass # Skip if bank value is somehow invalid
+
             if self.right_bank is not None:
-                outside_mask |= trimmed_data[self.x_column] > self.right_bank
+                # Ensure the bank value is a float for the comparison
+                try:
+                    rb_value = float(self.right_bank)
+                    outside_mask |= x_values > rb_value
+                except (ValueError, TypeError):
+                    pass
+            # ---------------------------------------------------------
 
             trimmed_data.loc[outside_mask, trim_col] = '!# '
 

@@ -1284,7 +1284,7 @@ class CrossSectionEditorApp(QMainWindow):
         add_left_action = menu.addAction("Set LB")
         add_right_action = menu.addAction("Set RB")
 
-        action = menu.exec_(QCursor.pos())
+        action = menu.exec(QCursor.pos())
 
         if action == add_left_action:
             self.interpolate_and_set_bank(event.xdata, bank='left')

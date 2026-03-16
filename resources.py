@@ -6,7 +6,10 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt5 import QtCore
+try:
+    from PyQt6 import QtCore  # type: ignore[import]
+except ImportError:
+    from PyQt5 import QtCore  # type: ignore[import]
 
 qt_resource_data = b"\
 \x00\x01\xd0\x9b\

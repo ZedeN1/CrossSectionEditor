@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugins>
-  <pyqgis_plugin name="Cross Section Editor" version="0.41">
+  <pyqgis_plugin name="Cross Section Editor" version="0.42">
     <description>A plugin for editing cross section data. Primarily for ESTRY-TUFLOW cross-sections.</description>
     <about>This plugin for QGIS provides an interactive tool for editing and managing cross-section data. Primarily for use with ESTRY-TUFLOW cross sections.</about>
-    <version>0.41</version>
+    <version>0.42</version>
     <qgis_minimum_version>3.0</qgis_minimum_version>
     <author_name>Pavel Diptan</author_name>
     <email>pdiptan@gmail.com</email>
     <homepage>https://github.com/ZedeN1/CrossSectionEditor</homepage>
     <tracker>https://github.com/ZedeN1/CrossSectionEditor/issues</tracker>
     <repository>https://github.com/ZedeN1/CrossSectionEditor</repository>
-    <download_url>https://github.com/ZedeN1/CrossSectionEditor/releases/download/v0.41/CrossSectionEditor.v0.41.zip</download_url>
+    <download_url>https://github.com/ZedeN1/CrossSectionEditor/releases/download/v0.42/CrossSectionEditor.v0.42.zip</download_url>
     <experimental>True</experimental>
     <deprecated>False</deprecated>
     <tags>cross-section,editor,hydraulics,TUFLOW</tags>

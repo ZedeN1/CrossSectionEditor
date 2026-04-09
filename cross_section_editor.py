@@ -1,3 +1,5 @@
+DEBUG = False  # Set to True to enable debug logging
+
 # QGIS imports
 from qgis.core import (
     QgsVectorLayer,
@@ -939,36 +941,39 @@ class CrossSectionEditorApp(QMainWindow):
 
     def update_cut_indices(self, model=None):
         """Update indices that will be cut"""
+        if DEBUG: print("[DEBUG update_cut_indices] entered", flush=True)
         if model is None:
             model = self.table_view.model()
             if model is None:
+                if DEBUG: print("[DEBUG update_cut_indices] no model, returning", flush=True)
                 return
 
         if self.current_data is not None and self.x_column:
             cut_indices = []
 
-            # Get indices for left bank cut
             if self.left_bank is not None:
                 left_cut = self.current_data[self.current_data[self.x_column] < self.left_bank].index.tolist()
                 cut_indices.extend(left_cut)
+                if DEBUG: print(f"[DEBUG update_cut_indices] left cut rows={len(left_cut)}", flush=True)
 
-            # Get indices for right bank cut
             if self.right_bank is not None:
                 right_cut = self.current_data[self.current_data[self.x_column] > self.right_bank].index.tolist()
                 cut_indices.extend(right_cut)
+                if DEBUG: print(f"[DEBUG update_cut_indices] right cut rows={len(right_cut)}", flush=True)
 
-            # Update model
+            if DEBUG: print(f"[DEBUG update_cut_indices] calling model.set_cut_indices() with {len(cut_indices)} rows", flush=True)
             model.set_cut_indices(cut_indices)
+            if DEBUG: print("[DEBUG update_cut_indices] done", flush=True)
 
     def on_table_data_changed(self):
         """Handle data changes in the table"""
-        # Get the updated data from the model
+        if DEBUG: print("[DEBUG on_table_data_changed] entered", flush=True)
         model = self.table_view.model()
         if model:
             self.current_data = model.get_dataframe()
-
-            # Update the plot
+            if DEBUG: print(f"[DEBUG on_table_data_changed] got dataframe shape={self.current_data.shape}, calling update_plot()", flush=True)
             self.update_plot(preserve_view=True)
+            if DEBUG: print("[DEBUG on_table_data_changed] done", flush=True)
 
 
     def update_plot(self, preserve_view=False, clear=False):
@@ -1422,35 +1427,51 @@ class CrossSectionEditorApp(QMainWindow):
 
     def set_left_bank(self, x_value, index=None):
         """Set the left bank at the given X value"""
+        if DEBUG: print(f"[DEBUG set_left_bank] x_value={x_value}, index={index}", flush=True)
         self.left_bank = x_value
         self.left_bank_index = index
+        if DEBUG: print("[DEBUG set_left_bank] calling update_plot()", flush=True)
         self.update_plot(preserve_view=True)
-
-        # Update table highlighting
+        if DEBUG: print("[DEBUG set_left_bank] calling update_cut_indices()", flush=True)
         self.update_cut_indices()
+        if DEBUG: print("[DEBUG set_left_bank] done", flush=True)
 
     def set_right_bank(self, x_value, index=None):
         """Set the right bank at the given X value"""
+        if DEBUG: print(f"[DEBUG set_right_bank] x_value={x_value}, index={index}", flush=True)
         self.right_bank = x_value
         self.right_bank_index = index
+        if DEBUG: print("[DEBUG set_right_bank] calling update_plot()", flush=True)
         self.update_plot(preserve_view=True)
-
-        # Update table highlighting
+        if DEBUG: print("[DEBUG set_right_bank] calling update_cut_indices()", flush=True)
         self.update_cut_indices()
+        if DEBUG: print("[DEBUG set_right_bank] done", flush=True)
 
     def apply_banks(self):
         """Apply the bank settings to create a trimmed dataset"""
+        if DEBUG: print(f"[DEBUG apply_banks] left_bank={self.left_bank}, right_bank={self.right_bank}", flush=True)
         if self.current_data is not None and (self.left_bank is not None or self.right_bank is not None):
+            if DEBUG: print(f"[DEBUG apply_banks] copying data, shape={self.current_data.shape}", flush=True)
             trimmed_data = self.current_data.copy()
 
             # Clean any old bank markers from the original first column
             first_col = trimmed_data.columns[0]
-            trimmed_data[first_col] = trimmed_data[first_col].astype(str).str.replace(r'^\s*[!#]{1,2}\s*', '', regex=True)
+            if DEBUG: print(f"[DEBUG apply_banks] cleaning first_col={first_col}, dtype={trimmed_data[first_col].dtype}", flush=True)
+            # Skip cleaning for numeric columns — they can never contain '!' or '#' prefixes
+            if not pd.api.types.is_numeric_dtype(trimmed_data[first_col].dtype):
+                _pattern = re.compile(r'^\s*[!#]{1,2}\s*')
+                trimmed_data[first_col] = trimmed_data[first_col].apply(
+                    lambda x: _pattern.sub('', str(x)) if pd.notna(x) else x
+                )
+                if DEBUG: print(f"[DEBUG apply_banks] first_col clean done, new dtype={trimmed_data[first_col].dtype}", flush=True)
+            else:
+                if DEBUG: print(f"[DEBUG apply_banks] first_col is numeric, skipping clean", flush=True)
 
             # Create or update a comment column to store the '!# ' flag
             trim_col = 'Trim'
             if trim_col not in trimmed_data.columns:
                 trimmed_data[trim_col] = ''
+            if DEBUG: print(f"[DEBUG apply_banks] Trim column ready, reordering cols", flush=True)
 
             # Reorder columns to make 'Trim' the first column
             cols = [trim_col] + [col for col in trimmed_data.columns if col != trim_col]
@@ -1458,37 +1479,39 @@ class CrossSectionEditorApp(QMainWindow):
 
             # Identify rows outside the banks
             outside_mask = pd.Series(False, index=trimmed_data.index)
-            
+
             # --- FIX: Ensure X column is numeric before comparison ---
-            # We use errors='coerce' to turn any non-parseable strings into NaN
-            # so they don't crash the comparison.
             x_values = pd.to_numeric(trimmed_data[self.x_column], errors='coerce')
+            if DEBUG: print(f"[DEBUG apply_banks] x_values dtype={x_values.dtype}, NaN count={x_values.isna().sum()}", flush=True)
 
             if self.left_bank is not None:
-                # Ensure the bank value is a float for the comparison
                 try:
                     lb_value = float(self.left_bank)
                     outside_mask |= x_values < lb_value
+                    if DEBUG: print(f"[DEBUG apply_banks] left mask applied, lb={lb_value}, rows masked={outside_mask.sum()}", flush=True)
                 except (ValueError, TypeError):
-                    pass # Skip if bank value is somehow invalid
+                    if DEBUG: print(f"[DEBUG apply_banks] left_bank float() failed: {self.left_bank!r}", flush=True)
 
             if self.right_bank is not None:
-                # Ensure the bank value is a float for the comparison
                 try:
                     rb_value = float(self.right_bank)
                     outside_mask |= x_values > rb_value
+                    if DEBUG: print(f"[DEBUG apply_banks] right mask applied, rb={rb_value}, rows masked={outside_mask.sum()}", flush=True)
                 except (ValueError, TypeError):
-                    pass
-            # ---------------------------------------------------------
+                    if DEBUG: print(f"[DEBUG apply_banks] right_bank float() failed: {self.right_bank!r}", flush=True)
 
             trimmed_data.loc[outside_mask, trim_col] = '!# '
+            if DEBUG: print(f"[DEBUG apply_banks] trim flags set, make_leftmost_zero={self.make_leftmost_zero_check.isChecked()}", flush=True)
 
             # Make leftmost X=0 if needed
             if self.make_leftmost_zero_check.isChecked():
+                if DEBUG: print("[DEBUG apply_banks] calling make_leftmost_zero()", flush=True)
                 trimmed_data = self.make_leftmost_zero(trimmed_data)
 
+            if DEBUG: print(f"[DEBUG apply_banks] returning trimmed data, shape={trimmed_data.shape}", flush=True)
             return trimmed_data
 
+        if DEBUG: print("[DEBUG apply_banks] no banks set, returning current_data as-is", flush=True)
         return self.current_data
 
     def fix_verticals(self, df):
@@ -1519,11 +1542,17 @@ class CrossSectionEditorApp(QMainWindow):
 
     def save_file(self):
         """Save the current file with the applied changes"""
+        if DEBUG: print("[DEBUG save_file] entered", flush=True)
+        self._saving = True
         if self.current_data is None or self.current_file_index < 0:
+            if DEBUG: print("[DEBUG save_file] early return - no data", flush=True)
+            self._saving = False
             return
 
         # Get the trimmed data
+        if DEBUG: print("[DEBUG save_file] calling apply_banks()", flush=True)
         trimmed_data = self.apply_banks()
+        if DEBUG: print(f"[DEBUG save_file] apply_banks done, shape={trimmed_data.shape if trimmed_data is not None else None}, dtypes={trimmed_data.dtypes.to_dict() if trimmed_data is not None else None}", flush=True)
 
         # Determine the output filename
         input_path = self.csv_files[self.current_file_index]
@@ -1545,9 +1574,12 @@ class CrossSectionEditorApp(QMainWindow):
             # Change in-place
             output_path = input_path
 
+        if DEBUG: print(f"[DEBUG save_file] output_path={output_path}", flush=True)
+
         try:
-            # Check if 'Trim' column exists
+            if DEBUG: print("[DEBUG save_file] calling to_csv()", flush=True)
             trimmed_data.to_csv(output_path, index=False)
+            if DEBUG: print("[DEBUG save_file] to_csv done", flush=True)
 
             if self.version_combo.currentText() == "Increment Version":
                 self.other_version_csvs.append(output_path)
@@ -1555,22 +1587,33 @@ class CrossSectionEditorApp(QMainWindow):
 
             # Save plot if requested
             if self.make_plot_file_check.isChecked():
+                if DEBUG: print("[DEBUG save_file] calling savefig()", flush=True)
                 plot_path = os.path.splitext(output_path)[0] + ".png"
                 self.canvas.fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+                if DEBUG: print("[DEBUG save_file] savefig done", flush=True)
 
+            if DEBUG: print("[DEBUG save_file] save complete", flush=True)
             self.show_status_message(f"File saved to: {output_path}", 2000)
 
         except Exception as e:
+            if DEBUG: print(f"[DEBUG save_file] exception: {e}", flush=True)
             QMessageBox.critical(self, "Error", f"Error saving file: {str(e)}")
+        finally:
+            self._saving = False
+            if DEBUG: print("[DEBUG save_file] _saving flag cleared", flush=True)
 
     def on_file_selected(self):
         """Handle selection of a file from the list"""
-        # Check if we need to save current changes
+        if DEBUG: print(f"[DEBUG on_file_selected] called, autosave={self.autosave_check.isChecked()}, _saving={getattr(self, '_saving', False)}", flush=True)
+        if getattr(self, '_saving', False):
+            if DEBUG: print("[DEBUG on_file_selected] re-entry blocked during save", flush=True)
+            return
         if self.autosave_check.isChecked() and self.current_data is not None:
+            if DEBUG: print("[DEBUG on_file_selected] autosave triggered save_file()", flush=True)
             self.save_file()
 
-        # Load the selected file
         self.current_file_index = self.file_list_widget.currentRow()
+        if DEBUG: print(f"[DEBUG on_file_selected] loading file index={self.current_file_index}", flush=True)
         self.load_current_file()
 
     def previous_file(self):

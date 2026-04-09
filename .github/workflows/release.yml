@@ -15,34 +15,33 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install qgis-plugin-ci
-        run: pip install qgis-plugin-ci
-
       - name: Configure git
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/ZedeN1/CrossSectionEditor.git
 
-      - name: Create GitHub Release
-        run: gh release create ${GITHUB_REF_NAME} --title "${GITHUB_REF_NAME}" --notes ""
+      - name: Create plugin ZIP
+        run: |
+          cd ..
+          zip -r CrossSectionEditor.${GITHUB_REF_NAME}.zip CrossSectionEditor \
+            --exclude "*.git*" \
+            --exclude "*__pycache__*" \
+            --exclude "*.github*"
+
+      - name: Create GitHub Release and upload ZIP
+        run: |
+          gh release create ${GITHUB_REF_NAME} \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "" \
+            ../CrossSectionEditor.${GITHUB_REF_NAME}.zip
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and upload plugin ZIP
-        run: >
-          qgis-plugin-ci release ${GITHUB_REF_NAME}
-          --github-token ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate plugins.xml and commit to main
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          DOWNLOAD_URL="https://github.com/ZedeN1/CrossSectionEditor/releases/download/${GITHUB_REF_NAME}/cross_section_editor.${GITHUB_REF_NAME}.zip"
+          DOWNLOAD_URL="https://github.com/ZedeN1/CrossSectionEditor/releases/download/${GITHUB_REF_NAME}/CrossSectionEditor.${GITHUB_REF_NAME}.zip"
 
           cat > plugins.xml <<EOF
           <?xml version="1.0" encoding="UTF-8"?>

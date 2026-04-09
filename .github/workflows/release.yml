@@ -23,6 +23,12 @@ jobs:
       - name: Install qgis-plugin-ci
         run: pip install qgis-plugin-ci
 
+      - name: Configure git for gh-pages push
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/ZedeN1/CrossSectionEditor.git
+
       - name: Create GitHub Release
         run: gh release create ${GITHUB_REF_NAME} --title "${GITHUB_REF_NAME}" --notes ""
         env:

@@ -23,7 +23,7 @@ jobs:
       - name: Install qgis-plugin-ci
         run: pip install qgis-plugin-ci
 
-      - name: Configure git for gh-pages push
+      - name: Configure git
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
@@ -34,8 +34,39 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy Release and Update XML
+      - name: Build and upload plugin ZIP
         run: >
           qgis-plugin-ci release ${GITHUB_REF_NAME}
           --github-token ${{ secrets.GITHUB_TOKEN }}
-          --create-plugin-repo
+
+      - name: Generate plugins.xml and commit to main
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          DOWNLOAD_URL="https://github.com/ZedeN1/CrossSectionEditor/releases/download/${GITHUB_REF_NAME}/cross_section_editor.${GITHUB_REF_NAME}.zip"
+
+          cat > plugins.xml <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <plugins>
+            <pyqgis_plugin name="Cross Section Editor" version="${VERSION}">
+              <description>A plugin for editing cross section data. Primarily for ESTRY-TUFLOW cross-sections.</description>
+              <about>This plugin for QGIS provides an interactive tool for editing and managing cross-section data. Primarily for use with ESTRY-TUFLOW cross sections.</about>
+              <version>${VERSION}</version>
+              <qgis_minimum_version>3.0</qgis_minimum_version>
+              <author_name>Pavel Diptan</author_name>
+              <email>pdiptan@gmail.com</email>
+              <homepage>https://github.com/ZedeN1/CrossSectionEditor</homepage>
+              <tracker>https://github.com/ZedeN1/CrossSectionEditor/issues</tracker>
+              <repository>https://github.com/ZedeN1/CrossSectionEditor</repository>
+              <download_url>${DOWNLOAD_URL}</download_url>
+              <experimental>True</experimental>
+              <deprecated>False</deprecated>
+              <tags>cross-section,editor,hydraulics,TUFLOW</tags>
+            </pyqgis_plugin>
+          </plugins>
+          EOF
+
+          git fetch origin main
+          git checkout main
+          git add plugins.xml
+          git commit -m "Update plugins.xml for ${GITHUB_REF_NAME}"
+          git push origin main

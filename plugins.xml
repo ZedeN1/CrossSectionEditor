@@ -10,7 +10,7 @@
     <homepage>https://github.com/ZedeN1/CrossSectionEditor</homepage>
     <tracker>https://github.com/ZedeN1/CrossSectionEditor/issues</tracker>
     <repository>https://github.com/ZedeN1/CrossSectionEditor</repository>
-    <download_url>https://github.com/ZedeN1/CrossSectionEditor/releases/download/v0.41/cross_section_editor.v0.41.zip</download_url>
+    <download_url>https://github.com/ZedeN1/CrossSectionEditor/releases/download/v0.41/CrossSectionEditor.v0.41.zip</download_url>
     <experimental>True</experimental>
     <deprecated>False</deprecated>
     <tags>cross-section,editor,hydraulics,TUFLOW</tags>

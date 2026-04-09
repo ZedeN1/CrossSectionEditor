@@ -1350,19 +1350,19 @@ class CrossSectionEditorApp(QMainWindow):
             col_dtype = df[col].dtype
             v1, v2 = row1[col], row2[col]
             
-            if np.issubdtype(col_dtype, np.number):
+            if pd.api.types.is_numeric_dtype(col_dtype) and not pd.api.types.is_bool_dtype(col_dtype):
                 # Linear interpolation for numeric columns
                 x1, x2 = row1[x_col], row2[x_col]
                 ratio = (x_value - x1) / (x2 - x1)
                 interpolated = v1 + ratio * (v2 - v1)
                 # Preserve integer type if both original values are int
-                if np.issubdtype(col_dtype, np.integer):
+                if pd.api.types.is_integer_dtype(col_dtype):
                     interpolated = int(round(interpolated))
                 new_row[col] = interpolated
             elif pd.api.types.is_bool_dtype(col_dtype):
                 # For booleans: keep if same, else False
                 new_row[col] = v1 if v1 == v2 else False
-            elif np.issubdtype(col_dtype, np.object_) and isinstance(v1, str) and v1 == v2:
+            elif isinstance(v1, str) and v1 == v2:
                 # Copy string if both are identical
                 new_row[col] = v1
             else:

@@ -23,6 +23,11 @@ jobs:
       - name: Install qgis-plugin-ci
         run: pip install qgis-plugin-ci
 
+      - name: Create GitHub Release
+        run: gh release create ${GITHUB_REF_NAME} --title "${GITHUB_REF_NAME}" --notes ""
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy Release and Update XML
         run: >
           qgis-plugin-ci release ${GITHUB_REF_NAME}

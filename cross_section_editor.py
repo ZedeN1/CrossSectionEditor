@@ -24,7 +24,7 @@ from qgis.PyQt.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter,
     QTableView, QHeaderView, QPushButton, QFileDialog, QListWidget, QLabel,
     QCheckBox, QComboBox, QLineEdit, QMessageBox, QGridLayout, QGroupBox, QMenu,
-    QStatusBar, QDialog, QDialogButtonBox, QTextEdit,
+    QStatusBar, QDialog, QDialogButtonBox,
     QAbstractItemView, QSizePolicy, QAction
 )
 
@@ -164,7 +164,13 @@ class SettingsDialog(QDialog):
         # X Column preferences
         x_group = QGroupBox("X Column Preferences")
         x_layout = QVBoxLayout()
-        self.x_text = QTextEdit()
+        self.x_text = QLineEdit()
+        self.x_text.setToolTip(
+            "Python list of column names/indices to try as the X (chainage/distance) column,\n"
+            "in descending order of preference. Names are case-insensitive strings; indices are\n"
+            "0-based integers. The first match found in a file is used.\n\n"
+            "Example: ['x', 'x (m)', 'chainage', 'w', 0]"
+        )
         x_layout.addWidget(self.x_text)
         x_group.setLayout(x_layout)
         layout.addWidget(x_group)
@@ -172,7 +178,13 @@ class SettingsDialog(QDialog):
         # Y Column preferences
         y_group = QGroupBox("Y Column Preferences")
         y_layout = QVBoxLayout()
-        self.y_text = QTextEdit()
+        self.y_text = QLineEdit()
+        self.y_text.setToolTip(
+            "Python list of column names/indices to try as the Y (elevation/depth) column,\n"
+            "in descending order of preference. Names are case-insensitive strings; indices are\n"
+            "0-based integers. The first match found in a file is used.\n\n"
+            "Example: ['y', 'z', 'h', 1]"
+        )
         y_layout.addWidget(self.y_text)
         y_group.setLayout(y_layout)
         layout.addWidget(y_group)
@@ -180,7 +192,12 @@ class SettingsDialog(QDialog):
         # N Column preferences
         n_group = QGroupBox("N (Roughness) Column Preferences. [] if not needed")
         n_layout = QVBoxLayout()
-        self.n_text = QTextEdit()
+        self.n_text = QLineEdit()
+        self.n_text.setToolTip(
+            "Python list of column names to try as the Manning's N (roughness) column,\n"
+            "in descending order of preference. Use [] if no roughness column is expected.\n\n"
+            "Example: ['n', 'm', 'Mannings n']"
+        )
         n_layout.addWidget(self.n_text)
         n_group.setLayout(n_layout)
         layout.addWidget(n_group)
@@ -188,7 +205,13 @@ class SettingsDialog(QDialog):
         # W Column preferences
         x_unsortable_group = QGroupBox("Unsortable Column Preferences (eg 'W' in HW tables).")
         x_unsortable_layout = QVBoxLayout()
-        self.x_unsortable_text = QTextEdit()
+        self.x_unsortable_text = QLineEdit()
+        self.x_unsortable_text.setToolTip(
+            "Python list of column names whose values cannot be meaningfully sorted as numbers.\n"
+            "When a file's X column matches one of these names, row reordering is skipped.\n"
+            "Useful for HW (head-water) tables where 'W' is a water level, not a chainage.\n\n"
+            "Example: ['w']"
+        )
         x_unsortable_layout.addWidget(self.x_unsortable_text)
         x_unsortable_group.setLayout(x_unsortable_layout)
         layout.addWidget(x_unsortable_group)
@@ -196,7 +219,12 @@ class SettingsDialog(QDialog):
         # Easting Column preferences
         easting_group = QGroupBox("Easting Column Preferences. (WKT takes preference)")
         easting_layout = QVBoxLayout()
-        self.easting_text = QTextEdit()
+        self.easting_text = QLineEdit()
+        self.easting_text.setToolTip(
+            "Python list of column names to try as the Easting (X coordinate) column for\n"
+            "georeferencing. If a column named 'WKT' is present it takes priority over this.\n\n"
+            "Example: ['easting']"
+        )
         easting_layout.addWidget(self.easting_text)
         easting_group.setLayout(easting_layout)
         layout.addWidget(easting_group)
@@ -204,7 +232,12 @@ class SettingsDialog(QDialog):
         # Northing Column preferences
         northing_group = QGroupBox("Northing Column Preferences. (WKT takes preference)")
         northing_layout = QVBoxLayout()
-        self.northing_text = QTextEdit()
+        self.northing_text = QLineEdit()
+        self.northing_text.setToolTip(
+            "Python list of column names to try as the Northing (Y coordinate) column for\n"
+            "georeferencing. If a column named 'WKT' is present it takes priority over this.\n\n"
+            "Example: ['northing']"
+        )
         northing_layout.addWidget(self.northing_text)
         northing_group.setLayout(northing_layout)
         layout.addWidget(northing_group)
@@ -252,23 +285,23 @@ class SettingsDialog(QDialog):
 
     def set_values(self, x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs, version_regex):
         """Set the dialog values"""
-        self.x_text.setPlainText(str(x_prefs))
-        self.y_text.setPlainText(str(y_prefs))
-        self.n_text.setPlainText(str(n_prefs))
-        self.x_unsortable_text.setPlainText(str(x_unsortable_prefs))
-        self.easting_text.setPlainText(str(easting_prefs))
-        self.northing_text.setPlainText(str(northing_prefs))
+        self.x_text.setText(str(x_prefs))
+        self.y_text.setText(str(y_prefs))
+        self.n_text.setText(str(n_prefs))
+        self.x_unsortable_text.setText(str(x_unsortable_prefs))
+        self.easting_text.setText(str(easting_prefs))
+        self.northing_text.setText(str(northing_prefs))
         self.version_regex_edit.setText(version_regex)
 
     def get_values(self):
         """Get the dialog values. Returns None values on parse error."""
         try:
-            x_prefs = literal_eval(self.x_text.toPlainText())
-            y_prefs = literal_eval(self.y_text.toPlainText())
-            n_prefs = literal_eval(self.n_text.toPlainText())
-            x_unsortable_prefs = literal_eval(self.x_unsortable_text.toPlainText())
-            easting_prefs = literal_eval(self.easting_text.toPlainText())
-            northing_prefs = literal_eval(self.northing_text.toPlainText())
+            x_prefs = literal_eval(self.x_text.text())
+            y_prefs = literal_eval(self.y_text.text())
+            n_prefs = literal_eval(self.n_text.text())
+            x_unsortable_prefs = literal_eval(self.x_unsortable_text.text())
+            easting_prefs = literal_eval(self.easting_text.text())
+            northing_prefs = literal_eval(self.northing_text.text())
             version_regex = self.version_regex_edit.text().strip()
             return x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs, version_regex
         except Exception as e:
@@ -330,9 +363,9 @@ class CrossSectionEditorApp(QMainWindow):
         # Version regex used to strip/detect version suffixes in filenames
         self.version_regex = r'_(v[\d]+)'
 
-        # Other CSVs
-        self.file_name_no_version = None
-        self.other_version_csvs = []
+        # Other CSVs (version comparison overlay)
+        self.all_csv_files: list = []       # master list of every loaded path
+        self.version_link_map: dict = {}    # active_path -> comparison_path (rebuilt by recompute_version_links)
         self.other_version_csv = None
         self.other_version_csv_name = None
         self.other_version_csv_x = None
@@ -360,10 +393,12 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Previous and Next buttons
         self.prev_button = QPushButton("Previous")
+        self.prev_button.setToolTip("Load the previous CSV file in the list")
         self.prev_button.clicked.connect(self.previous_file)
         header_layout.addWidget(self.prev_button, 0, 0)
 
         self.next_button = QPushButton("Next")
+        self.next_button.setToolTip("Load the next CSV file in the list")
         self.next_button.clicked.connect(self.next_file)
         header_layout.addWidget(self.next_button, 0, 1)
 
@@ -372,27 +407,35 @@ class CrossSectionEditorApp(QMainWindow):
         header_layout.addWidget(self.filename_label, 0, 2, 1, 2)
 
         self.reload_button = QPushButton("Reload File")
+        self.reload_button.setToolTip("Discard unsaved changes and reload the current file from disk")
         self.reload_button.clicked.connect(self.reload_current_file)
         header_layout.addWidget(self.reload_button, 0, 4)
 
         # Save button
         self.save_button = QPushButton("Save")
+        self.save_button.setToolTip("Save the current file (applies bank trimming and StartX=0 offset if enabled)")
         self.save_button.clicked.connect(self.save_file)
         header_layout.addWidget(self.save_button, 0, 5)
 
         # Undo/Redo buttons
         self.undo_button = QPushButton("Undo")
+        self.undo_button.setToolTip("Undo the last edit (not yet implemented)")
         self.undo_button.clicked.connect(self.undo)
         self.undo_button.setEnabled(False)  # Disabled until implemented
         header_layout.addWidget(self.undo_button, 1, 0)
 
         self.redo_button = QPushButton("Redo")
+        self.redo_button.setToolTip("Redo the last undone edit (not yet implemented)")
         self.redo_button.clicked.connect(self.redo)
         self.redo_button.setEnabled(False)  # Disabled until implemented
         header_layout.addWidget(self.redo_button, 1, 1)
 
         # Version control options
         self.version_combo = QComboBox()
+        self.version_combo.setToolTip(
+            "Increment Version: saves to a new file with the version string appended/replaced\n"
+            "Change in-place: overwrites the existing file"
+        )
         self.version_combo.addItems(["Increment Version", "Change in-place"])
         header_layout.addWidget(self.version_combo, 1, 2)
 
@@ -402,6 +445,7 @@ class CrossSectionEditorApp(QMainWindow):
 
         self.version_edit = QLineEdit("v02")
         self.version_edit.setFixedWidth(50)
+        self.version_edit.setToolTip("Version string to append when saving with 'Increment Version' (e.g. v02, v003)")
         header_layout.addWidget(self.version_edit, 1, 4)
         header_layout.setAlignment(self.version_edit, Qt.AlignmentFlag.AlignLeft)
 
@@ -414,6 +458,7 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Column Settings button
         self.column_settings_button = QPushButton("Settings")
+        self.column_settings_button.setToolTip("Configure column name preferences, unsortable columns, and version regex")
         self.column_settings_button.clicked.connect(self.show_settings)
         header_layout.addWidget(self.column_settings_button, 1, 5)
 
@@ -422,18 +467,29 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Fix verticals
         self.fix_verticals_check = QCheckBox("Fix Verticals and order on load")
+        self.fix_verticals_check.setToolTip(
+            "On load: sort rows by X value and offset any duplicate X values by a small amount\n"
+            "so the cross section has strictly increasing chainage."
+        )
         header_layout.addWidget(self.fix_verticals_check, 2, 0)
         self.fix_verticals_check.stateChanged.connect(self.reload_current_file)
 
         # Make left most active point X=0
         self.make_leftmost_zero_check = QCheckBox("Open and save with StartX=0")
+        self.make_leftmost_zero_check.setToolTip(
+            "Shift the active (in-bank) cross section so it starts at X=0.\n"
+            "Trimmed rows outside the banks will have negative X values.\n"
+            "The same offset is applied on save so the file on disk also starts at zero."
+        )
         header_layout.addWidget(self.make_leftmost_zero_check, 2, 1)
         self.make_leftmost_zero_check.stateChanged.connect(self.reload_current_file)
 
         self.autosave_check = QCheckBox("Autosave on section change")
+        self.autosave_check.setToolTip("Automatically save the current file before switching to another file in the list")
         header_layout.addWidget(self.autosave_check, 2, 2)
 
         self.make_plot_file_check = QCheckBox("Make plot file on save")
+        self.make_plot_file_check.setToolTip("Generate a .png plot image alongside the CSV whenever the file is saved")
         header_layout.addWidget(self.make_plot_file_check, 2, 3)
 
         self.polygon_layer_combo = QComboBox()
@@ -449,9 +505,32 @@ class CrossSectionEditorApp(QMainWindow):
 
         self.refresh_polygon_layer_combo()
 
-        self.other_version_csvs_btn = QPushButton("Other Version CSV files")
-        header_layout.addWidget(self.other_version_csvs_btn, 2, 5)
-        self.other_version_csvs_btn.clicked.connect(self.select_other_version_csvs)
+        self.version_link_combo = QComboBox()
+        self.version_link_combo.addItems([
+            "No version linking",
+            "Prefer newer (consecutive)",
+            "Prefer older (consecutive)",
+            "Prefer newest (extreme)",
+            "Prefer oldest (extreme)",
+        ])
+        self.version_link_combo.setToolTip(
+            "Controls how versioned CSV files already in the list are paired for comparison.\n\n"
+            "No version linking: each file is shown and navigated independently.\n\n"
+            "Prefer newer (consecutive): each file paired with its immediate predecessor.\n"
+            "  Newer file is active; older is the red overlay.\n"
+            "  e.g. v01→v02, v02→v10  [v01 hidden, v02 compares to v01, v10 compares to v02]\n\n"
+            "Prefer older (consecutive): each file paired with its immediate successor.\n"
+            "  Older file is active; newer is the overlay.\n"
+            "  e.g. v01→v02, v02→v10  [v10 hidden, v01 compares to v02, v02 compares to v10]\n\n"
+            "Prefer newest (extreme): one entry per group — newest is active, oldest is overlay.\n"
+            "  e.g. Test_v10.csv (Test_v01)  [middle versions hidden]\n\n"
+            "Prefer oldest (extreme): one entry per group — oldest is active, newest is overlay.\n"
+            "  e.g. Test_v01.csv (Test_v10)  [middle versions hidden]\n\n"
+            "Version pairing uses the Version Regex from Settings to strip the suffix.\n"
+            "Closing a linked entry also removes its hidden comparison file from the list."
+        )
+        header_layout.addWidget(self.version_link_combo, 2, 5)
+        self.version_link_combo.currentIndexChanged.connect(self.recompute_version_links)
 
         # Static helper text
         self.left_bank_ctrl = QLabel("Ctrl + Click on plot to set Left Bank (Snapped)")
@@ -511,11 +590,13 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Load files button
         self.load_files_button = QPushButton("Load CSV Files")
+        self.load_files_button.setToolTip("Open one or more CSV files and add them to the list")
         self.load_files_button.clicked.connect(self.load_csv_files)
         file_list_layout.addWidget(self.load_files_button)
 
         # Close selected files button
         self.close_all_files_button = QPushButton("Close Selected")
+        self.close_all_files_button.setToolTip("Remove the selected file(s) from the list (Ctrl+A to select all)")
         self.close_all_files_button.clicked.connect(self.close_selected_csv_files)
         file_list_layout.addWidget(self.close_all_files_button)
 
@@ -545,6 +626,15 @@ class CrossSectionEditorApp(QMainWindow):
 
         # Show the UI
         self.show()
+
+    def closeEvent(self, event):
+        """Remove the temporary paths layer from the QGIS project on close."""
+        if self.paths_layer and self.paths_layer.isValid():
+            project = QgsProject.instance()
+            if project and self.paths_layer.id() in project.mapLayers():
+                project.removeMapLayer(self.paths_layer)
+        self.paths_layer = None
+        super().closeEvent(event)
 
     def show_status_message(self, message, duration=3000):
         """Queue a message and show it in the status bar."""
@@ -694,30 +784,15 @@ class CrossSectionEditorApp(QMainWindow):
         file_dialog.setNameFilter("CSV files (*.csv)")
 
         if file_dialog.exec():
-            # Get selected files
             file_paths = file_dialog.selectedFiles()
 
-            # Ensure uniqueness while preserving order
-            existing_files = set(self.csv_files) if hasattr(self, 'csv_files') else set()
-            unique_new_files = [f for f in file_paths if f not in existing_files]
+            # Ensure uniqueness while preserving order; exclude sidecar trim files
+            existing = set(self.all_csv_files)
+            unique_new = [f for f in file_paths if f not in existing and not f.endswith('.trim.csv')]
 
-            if unique_new_files:
-                self.csv_files.extend(unique_new_files)
-
-                # Update filename display logic
-                file_name_counts = {}
-                for f in self.csv_files:
-                    name = os.path.basename(f)
-                    file_name_counts[name] = file_name_counts.get(name, 0) + 1
-
-                self.file_list = [
-                    f if file_name_counts[os.path.basename(f)] > 1 else os.path.basename(f)
-                    for f in self.csv_files
-                ]
-
-                # Refresh file list widget
-                self.file_list_widget.clear()
-                self.file_list_widget.addItems(self.file_list)
+            if unique_new:
+                self.all_csv_files.extend(unique_new)
+                self.recompute_version_links()
 
     def close_selected_csv_files(self):
         """Close the files selected in the CSV list and update the UI"""
@@ -735,20 +810,21 @@ class CrossSectionEditorApp(QMainWindow):
         )
         current_removed = self.current_file_index in selected_rows
 
+        # Collect paths to remove from the master list (active file + its hidden comparison)
+        paths_to_remove: set = set()
         for row in selected_rows:
-            self.csv_files.pop(row)
+            active_path = self.csv_files[row]
+            paths_to_remove.add(active_path)
+            comparison = self.version_link_map.get(active_path)
+            if comparison:
+                paths_to_remove.add(comparison)
 
-        # Rebuild display names respecting duplicate-basename logic
-        name_counts: dict = {}
-        for f in self.csv_files:
-            name_counts[os.path.basename(f)] = name_counts.get(os.path.basename(f), 0) + 1
-        self.file_list = [
-            f if name_counts[os.path.basename(f)] > 1 else os.path.basename(f)
-            for f in self.csv_files
-        ]
+        self.all_csv_files = [f for f in self.all_csv_files if f not in paths_to_remove]
 
-        self.file_list_widget.clear()
-        self.file_list_widget.addItems(self.file_list)
+        n = len(selected_rows)
+
+        # recompute_version_links rebuilds csv_files and file_list_widget
+        self.recompute_version_links()
 
         if current_removed or not self.csv_files:
             self.current_file_index = -1
@@ -763,49 +839,137 @@ class CrossSectionEditorApp(QMainWindow):
             self.canvas.axes.cla()
             self.canvas.draw_idle()
             self.filename_label.setText("No file loaded")
-        else:
+        elif current_path in self.csv_files:
             self.current_file_index = self.csv_files.index(current_path)
             self.file_list_widget.setCurrentRow(self.current_file_index)
 
-        n = len(selected_rows)
         self.show_status_message(f"Closed {n} file{'s' if n != 1 else ''}", 1000)
 
-    def match_other_version_csv(self):
-        """Finds the most recent versioned CSV matching self.file_name_no_version."""
+    def recompute_version_links(self):
+        """Rebuild csv_files, version_link_map, file_list, and file_list_widget from all_csv_files.
 
-        def extract_version(filename):
-            """Extracts the version number as a tuple for proper sorting."""
-            name, _ = os.path.splitext(os.path.basename(filename))
-            parts = name.split("_v")
-            if len(parts) > 1 and parts[-1].replace(".", "").isdigit():
-                return tuple(map(int, parts[-1].split(".")))  # Convert to tuple of ints
-            return (0,)  # Default version
+        Linking mode (from version_link_combo):
+          0 – No version linking         : csv_files == all_csv_files; no overlay
+          1 – Prefer newer (consecutive) : active = newer, overlay = immediate predecessor
+          2 – Prefer older (consecutive) : active = older, overlay = immediate successor
+          3 – Prefer newest (extreme)    : active = newest, overlay = oldest (one entry per group)
+          4 – Prefer oldest (extreme)    : active = oldest, overlay = newest (one entry per group)
+        """
+        mode = self.version_link_combo.currentIndex()
+        regex = self.version_regex or r'_(v[\d]+)'
 
-        base_name = self.file_name_no_version  # Avoid repeated attribute lookup
-        suffix = ".csv"
+        def strip_version(path: str) -> str:
+            base = os.path.splitext(os.path.basename(path))[0]
+            return re.sub(regex, '', base)
 
-        # Fast filtering: avoids regex, checks filename start and end directly
-        matching_files = [
-            file for file in self.other_version_csvs
-            if file.endswith(suffix) and os.path.basename(file).startswith(base_name)
-        ]
+        def version_key(path: str):
+            """Return a sortable key from the version-token digits, or () for no match."""
+            base = os.path.splitext(os.path.basename(path))[0]
+            m = re.search(regex, base)
+            if m:
+                digits = re.sub(r'[^\d]', '', m.group(1))
+                return tuple(int(c) for c in digits) if digits else ()
+            return ()
 
-        if not matching_files:
-            self.other_version_csv = None
-            return None
+        self.version_link_map = {}
 
-        # Sorting is fine for a small number of matches
-        sorted_files = sorted(matching_files, key=extract_version, reverse=True)
+        # Always work in alphabetical-basename order so newly added files slot in correctly
+        sorted_all = sorted(self.all_csv_files, key=lambda p: os.path.basename(p).lower())
 
-        self.other_version_csv = sorted_files[0]
-        self.other_version_csv_name = os.path.splitext(os.path.basename(self.other_version_csv))[0]
-        self.show_status_message(f"Found other csv: {self.other_version_csv_name}", 500)
+        if mode == 0:
+            # No linking — every file is independent and visible
+            self.csv_files = sorted_all
+        else:
+            # Group files by their base name (version suffix stripped)
+            groups: dict[str, list] = {}
+            for path in sorted_all:
+                key = strip_version(path)
+                groups.setdefault(key, []).append(path)
+
+            active_files: list = []
+
+            for group in groups.values():
+                if len(group) < 2:
+                    # Single file in group — no linking possible
+                    active_files.append(group[0])
+                    continue
+
+                # Sort ascending by version
+                sorted_group = sorted(group, key=version_key)
+
+                if mode == 1:
+                    # Prefer newer (consecutive): active = newer, overlay = immediate predecessor
+                    # e.g. [v01, v02, v10] → v02(active,v01), v10(active,v02); v01 hidden
+                    for i, path in enumerate(sorted_group):
+                        if i == 0:
+                            pass  # oldest becomes overlay only, not active
+                        else:
+                            active_files.append(path)
+                            self.version_link_map[path] = sorted_group[i - 1]
+
+                elif mode == 2:
+                    # Prefer older (consecutive): active = older, overlay = immediate successor
+                    # e.g. [v01, v02, v10] → v01(active,v02), v02(active,v10); v10 hidden
+                    for i, path in enumerate(sorted_group):
+                        if i == len(sorted_group) - 1:
+                            pass  # newest becomes overlay only, not active
+                        else:
+                            active_files.append(path)
+                            self.version_link_map[path] = sorted_group[i + 1]
+
+                elif mode == 3:
+                    # Prefer newer (extreme): one entry — newest active, oldest overlay
+                    # e.g. [v01, v02, v10] → v10(active,v01); v01,v02 hidden
+                    newest = sorted_group[-1]
+                    oldest = sorted_group[0]
+                    active_files.append(newest)
+                    self.version_link_map[newest] = oldest
+
+                else:
+                    # mode == 4 — Prefer older (extreme): one entry — oldest active, newest overlay
+                    # e.g. [v01, v02, v10] → v01(active,v10); v02,v10 hidden
+                    oldest = sorted_group[0]
+                    newest = sorted_group[-1]
+                    active_files.append(oldest)
+                    self.version_link_map[oldest] = newest
+
+            # Preserve alphabetical order for active files
+            order = {p: i for i, p in enumerate(sorted_all)}
+            self.csv_files = sorted(active_files, key=lambda p: order.get(p, 0))
+
+        # Rebuild display names (show full path only when basenames collide)
+        name_counts: dict[str, int] = {}
+        for f in self.csv_files:
+            name_counts[os.path.basename(f)] = name_counts.get(os.path.basename(f), 0) + 1
+
+        def display_name(path: str) -> str:
+            name = path if name_counts[os.path.basename(path)] > 1 else os.path.basename(path)
+            comparison = self.version_link_map.get(path)
+            if comparison:
+                name += f" ({os.path.splitext(os.path.basename(comparison))[0]})"
+            return name
+
+        self.file_list = [display_name(f) for f in self.csv_files]
+
+        self.file_list_widget.clear()
+        self.file_list_widget.addItems(self.file_list)
+
+        # Restore the highlighted selection after the widget was repopulated
+        current_path = (
+            self.csv_files[self.current_file_index]
+            if 0 <= self.current_file_index < len(self.csv_files)
+            else None
+        )
+        if current_path and current_path in self.csv_files:
+            self.current_file_index = self.csv_files.index(current_path)
+            self.file_list_widget.setCurrentRow(self.current_file_index)
 
     def load_other_csv_file(self):
         """Load the other csv file into df for plot"""
         self.other_version_csv_x = None
         self.other_version_csv_y = None
 
+        assert self.other_version_csv is not None
         try:
             has_header = self.detect_header(self.other_version_csv)
             other_df = pd.read_csv(self.other_version_csv, index_col=None, header=0 if has_header else None, comment='!')
@@ -841,13 +1005,18 @@ class CrossSectionEditorApp(QMainWindow):
                 # Load the CSV file
                 self.file_path = self.csv_files[self.current_file_index]
                 self.file_name = os.path.splitext(os.path.basename(self.file_path))[0]
-                if self.other_version_csvs:
-                    self.file_name_no_version = re.sub(self.version_regex or r'_(v[\d]+)', '', self.file_name)
-                    # print(f"self.file_name_no_version: {self.file_name_no_version}")
-                    self.match_other_version_csv()
 
-                if self.other_version_csv:
+                # Resolve comparison overlay from version link map
+                comparison_path = self.version_link_map.get(self.file_path)
+                if comparison_path:
+                    self.other_version_csv = comparison_path
+                    self.other_version_csv_name = os.path.splitext(os.path.basename(comparison_path))[0]
                     self.load_other_csv_file()
+                else:
+                    self.other_version_csv = None
+                    self.other_version_csv_name = None
+                    self.other_version_csv_x = None
+                    self.other_version_csv_y = None
 
                 # Check if the first row contains column-like names
                 self.has_header = self.detect_header(self.file_path)
@@ -1726,9 +1895,10 @@ class CrossSectionEditorApp(QMainWindow):
                 if DEBUG: print("[DEBUG save_file] removing stale trim sidecar", flush=True)
                 os.remove(trim_path)
 
-            if self.version_combo.currentText() == "Increment Version":
-                self.other_version_csvs.append(output_path)
-                self.other_version_csvs_btn.setText(f"Loaded: {len(self.other_version_csvs)}")
+            if output_path not in self.all_csv_files:
+                self.all_csv_files.append(output_path)
+            self.recompute_version_links()
+            self.load_current_file()
 
             # Save plot if requested
             if self.make_plot_file_check.isChecked():
@@ -1790,17 +1960,6 @@ class CrossSectionEditorApp(QMainWindow):
         """Placeholder for redo functionality"""
         # To be implemented in a future version
         pass
-
-    def select_other_version_csvs(self):
-        """Opens a file dialog for the user to select multiple CSV files."""
-        file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select CSV Files", "",
-            "CSV Files (*.csv);;All Files (*)"
-        )
-
-        if file_paths:
-            self.other_version_csvs.extend(file_paths)
-            self.other_version_csvs_btn.setText(f"Loaded: {len(self.other_version_csvs)}")
 
     def refresh_polygon_layer_combo(self, *_):
         """Repopulate the polygon layer combo with current QGIS project polygon layers."""

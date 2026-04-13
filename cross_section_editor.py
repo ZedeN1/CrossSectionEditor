@@ -783,48 +783,75 @@ class CrossSectionEditorApp(QMainWindow):
                 # Detect X and Y columns *after* reading the full data
                 self.x_column, self.y_column, self.n_column = self.detect_xy_columns(df)
                 
-                # Detect and set bank positions based on the first column
+                # Strip any legacy '!# ' markers left by old saves (first column only)
                 first_col = df.columns[0]
-                if df[first_col].astype(str).str.startswith('!').any():
-                    # Rows that do NOT start with '!' are considered active
-                    active_mask = ~df[first_col].astype(str).str.startswith('!')
-                    active_indices = df[active_mask].index
-                    
-                    if not active_indices.empty:
-                        first_active_idx = active_indices[0]
-                        last_active_idx = active_indices[-1]
-                        
-                        # Check for any inactive rows before the first active one
-                        if any(~active_mask.loc[:first_active_idx - 1]):
-                            self.left_bank_index = first_active_idx
-                            self.left_bank = df.loc[first_active_idx, self.x_column]
-                        else:
-                            self.left_bank_index = None
-                            self.left_bank = None
+                if not pd.api.types.is_numeric_dtype(df[first_col].dtype):
+                    _legacy_pat = re.compile(r'^\s*[!#]{1,2}\s*')
+                    df[first_col] = df[first_col].apply(
+                        lambda v: _legacy_pat.sub('', str(v)) if pd.notna(v) else v
+                    )
+                # Drop legacy Trim column if present
+                if 'Trim' in df.columns:
+                    df = df.drop(columns=['Trim'])
 
-                        # Check for any inactive rows after the last active one
-                        if any(~active_mask.loc[last_active_idx + 1:]):
-                            self.right_bank_index = last_active_idx
-                            self.right_bank = df.loc[last_active_idx, self.x_column]
-                        else:
-                            self.right_bank_index = None
-                            self.right_bank = None
+                # Check for a .trim.csv sidecar produced by the current save format
+                trim_path = os.path.splitext(self.file_path)[0] + '.trim.csv'
+                if os.path.exists(trim_path):
+                    trim_df = pd.read_csv(trim_path, index_col=None)
+                    # Apply same integer-column normalisation as the main file
+                    try:
+                        trim_df.columns = [int(col) if str(col).isdigit() else col for col in trim_df.columns]
+                    except ValueError:
+                        pass
+
+                    # Capture in-bank boundaries before combining
+                    main_x      = pd.to_numeric(df[self.x_column], errors='coerce')
+                    trim_x      = pd.to_numeric(trim_df[self.x_column], errors='coerce')
+                    main_x_min  = float(main_x.min())
+                    main_x_max  = float(main_x.max())
+                    has_left_trim  = bool((trim_x < main_x_min).any())
+                    has_right_trim = bool((trim_x > main_x_max).any())
+
+                    # Combine and sort so the full cross-section is available for display
+                    df = pd.concat([trim_df, df], ignore_index=True)
+                    df = df.sort_values(by=self.x_column).reset_index(drop=True)
+
+                    # make_leftmost_zero: shift by the in-bank minimum so the active
+                    # section starts at zero; trim rows on the left become negative.
+                    if self.make_leftmost_zero_check.isChecked():
+                        df[self.x_column] = pd.to_numeric(df[self.x_column], errors='coerce') - main_x_min
+                        main_x_max = main_x_max - main_x_min
+                        main_x_min = 0.0
+
+                    # Set bank markers
+                    if has_left_trim:
+                        lb_idx = df.index[pd.to_numeric(df[self.x_column], errors='coerce') == main_x_min]
+                        self.left_bank       = main_x_min
+                        self.left_bank_index = int(lb_idx[0]) if len(lb_idx) else None
                     else:
-                        # No valid active rows
-                        self.left_bank = self.right_bank = None
-                        self.left_bank_index = self.right_bank_index = None
+                        self.left_bank       = None
+                        self.left_bank_index = None
+
+                    if has_right_trim:
+                        rb_idx = df.index[pd.to_numeric(df[self.x_column], errors='coerce') == main_x_max]
+                        self.right_bank       = main_x_max
+                        self.right_bank_index = int(rb_idx[-1]) if len(rb_idx) else None
+                    else:
+                        self.right_bank       = None
+                        self.right_bank_index = None
+
                 else:
-                    # No deactivated rows
+                    # No sidecar — no banks
                     self.left_bank = self.right_bank = None
                     self.left_bank_index = self.right_bank_index = None
 
-                # Apply fix verticals if needed
-                if self.fix_verticals_check.isChecked():
-                    df = self.fix_verticals(df)
+                    # Apply fix verticals if needed
+                    if self.fix_verticals_check.isChecked():
+                        df = self.fix_verticals(df)
 
-                # Apply fix verticals if needed
-                if self.make_leftmost_zero_check.isChecked():
-                    df = self.make_leftmost_zero(df)
+                    # make_leftmost_zero shifts by global min (no trim data present)
+                    if self.make_leftmost_zero_check.isChecked():
+                        df = self.make_leftmost_zero(df)
 
                 # Set the current data
                 self.current_data = df.copy()
@@ -1448,71 +1475,79 @@ class CrossSectionEditorApp(QMainWindow):
         if DEBUG: print("[DEBUG set_right_bank] done", flush=True)
 
     def apply_banks(self):
-        """Apply the bank settings to create a trimmed dataset"""
+        """Apply bank boundaries and return (in_bank_df, out_of_bank_df).
+
+        Both dataframes share the same columns as current_data (no Trim column).
+        make_leftmost_zero shifts so the leftmost IN-BANK point equals X=0; the
+        same offset is applied to the out-of-bank rows so all data stays in the
+        same coordinate space (left-bank trim rows will have negative X).
+        """
         if DEBUG: print(f"[DEBUG apply_banks] left_bank={self.left_bank}, right_bank={self.right_bank}", flush=True)
-        if self.current_data is not None and (self.left_bank is not None or self.right_bank is not None):
-            if DEBUG: print(f"[DEBUG apply_banks] copying data, shape={self.current_data.shape}", flush=True)
-            trimmed_data = self.current_data.copy()
 
-            # Clean any old bank markers from the original first column
-            first_col = trimmed_data.columns[0]
-            if DEBUG: print(f"[DEBUG apply_banks] cleaning first_col={first_col}, dtype={trimmed_data[first_col].dtype}", flush=True)
-            # Skip cleaning for numeric columns — they can never contain '!' or '#' prefixes
-            if not pd.api.types.is_numeric_dtype(trimmed_data[first_col].dtype):
-                _pattern = re.compile(r'^\s*[!#]{1,2}\s*')
-                trimmed_data[first_col] = trimmed_data[first_col].apply(
-                    lambda x: _pattern.sub('', str(x)) if pd.notna(x) else x
-                )
-                if DEBUG: print(f"[DEBUG apply_banks] first_col clean done, new dtype={trimmed_data[first_col].dtype}", flush=True)
-            else:
-                if DEBUG: print(f"[DEBUG apply_banks] first_col is numeric, skipping clean", flush=True)
+        empty = pd.DataFrame(columns=self.current_data.columns) if self.current_data is not None else pd.DataFrame()
 
-            # Create or update a comment column to store the '!# ' flag
-            trim_col = 'Trim'
-            if trim_col not in trimmed_data.columns:
-                trimmed_data[trim_col] = ''
-            if DEBUG: print(f"[DEBUG apply_banks] Trim column ready, reordering cols", flush=True)
+        if self.current_data is None:
+            if DEBUG: print("[DEBUG apply_banks] no current_data, returning empty", flush=True)
+            return empty, empty
 
-            # Reorder columns to make 'Trim' the first column
-            cols = [trim_col] + [col for col in trimmed_data.columns if col != trim_col]
-            trimmed_data = trimmed_data[cols]
+        df = self.current_data.copy()
 
-            # Identify rows outside the banks
-            outside_mask = pd.Series(False, index=trimmed_data.index)
+        # Strip legacy '!# ' markers from the first column (old-format files loaded
+        # before this change will have them; clean on the way through).
+        first_col = df.columns[0]
+        if not pd.api.types.is_numeric_dtype(df[first_col].dtype):
+            _pattern = re.compile(r'^\s*[!#]{1,2}\s*')
+            df[first_col] = df[first_col].apply(
+                lambda v: _pattern.sub('', str(v)) if pd.notna(v) else v
+            )
 
-            # --- FIX: Ensure X column is numeric before comparison ---
-            x_values = pd.to_numeric(trimmed_data[self.x_column], errors='coerce')
-            if DEBUG: print(f"[DEBUG apply_banks] x_values dtype={x_values.dtype}, NaN count={x_values.isna().sum()}", flush=True)
+        # Drop legacy Trim column if present
+        if 'Trim' in df.columns:
+            df = df.drop(columns=['Trim'])
 
-            if self.left_bank is not None:
-                try:
-                    lb_value = float(self.left_bank)
-                    outside_mask |= x_values < lb_value
-                    if DEBUG: print(f"[DEBUG apply_banks] left mask applied, lb={lb_value}, rows masked={outside_mask.sum()}", flush=True)
-                except (ValueError, TypeError):
-                    if DEBUG: print(f"[DEBUG apply_banks] left_bank float() failed: {self.left_bank!r}", flush=True)
-
-            if self.right_bank is not None:
-                try:
-                    rb_value = float(self.right_bank)
-                    outside_mask |= x_values > rb_value
-                    if DEBUG: print(f"[DEBUG apply_banks] right mask applied, rb={rb_value}, rows masked={outside_mask.sum()}", flush=True)
-                except (ValueError, TypeError):
-                    if DEBUG: print(f"[DEBUG apply_banks] right_bank float() failed: {self.right_bank!r}", flush=True)
-
-            trimmed_data.loc[outside_mask, trim_col] = '!# '
-            if DEBUG: print(f"[DEBUG apply_banks] trim flags set, make_leftmost_zero={self.make_leftmost_zero_check.isChecked()}", flush=True)
-
-            # Make leftmost X=0 if needed
+        if self.left_bank is None and self.right_bank is None:
+            if DEBUG: print("[DEBUG apply_banks] no banks set, applying make_leftmost_zero to full data if needed", flush=True)
             if self.make_leftmost_zero_check.isChecked():
-                if DEBUG: print("[DEBUG apply_banks] calling make_leftmost_zero()", flush=True)
-                trimmed_data = self.make_leftmost_zero(trimmed_data)
+                df = self.make_leftmost_zero(df)
+            return df, pd.DataFrame(columns=df.columns)
 
-            if DEBUG: print(f"[DEBUG apply_banks] returning trimmed data, shape={trimmed_data.shape}", flush=True)
-            return trimmed_data
+        # Build outside mask
+        x_values = pd.to_numeric(df[self.x_column], errors='coerce')
+        if DEBUG: print(f"[DEBUG apply_banks] x_values dtype={x_values.dtype}, NaN count={x_values.isna().sum()}", flush=True)
+        outside_mask = pd.Series(False, index=df.index)
 
-        if DEBUG: print("[DEBUG apply_banks] no banks set, returning current_data as-is", flush=True)
-        return self.current_data
+        if self.left_bank is not None:
+            try:
+                lb_value = float(self.left_bank)
+                outside_mask |= x_values < lb_value
+                if DEBUG: print(f"[DEBUG apply_banks] left mask applied, lb={lb_value}, rows masked={outside_mask.sum()}", flush=True)
+            except (ValueError, TypeError):
+                if DEBUG: print(f"[DEBUG apply_banks] left_bank float() failed: {self.left_bank!r}", flush=True)
+
+        if self.right_bank is not None:
+            try:
+                rb_value = float(self.right_bank)
+                outside_mask |= x_values > rb_value
+                if DEBUG: print(f"[DEBUG apply_banks] right mask applied, rb={rb_value}, rows masked={outside_mask.sum()}", flush=True)
+            except (ValueError, TypeError):
+                if DEBUG: print(f"[DEBUG apply_banks] right_bank float() failed: {self.right_bank!r}", flush=True)
+
+        in_bank_df = df[~outside_mask].copy()
+        out_of_bank_df = df[outside_mask].copy()
+
+        if DEBUG: print(f"[DEBUG apply_banks] in_bank={len(in_bank_df)} rows, out_of_bank={len(out_of_bank_df)} rows", flush=True)
+
+        # make_leftmost_zero: offset is the minimum X of the IN-BANK rows so that
+        # the active cross-section starts at zero (not the full extent).
+        if self.make_leftmost_zero_check.isChecked() and not in_bank_df.empty:
+            if DEBUG: print("[DEBUG apply_banks] applying make_leftmost_zero using in-bank min", flush=True)
+            offset = pd.to_numeric(in_bank_df[self.x_column], errors='coerce').min()
+            in_bank_df[self.x_column] = pd.to_numeric(in_bank_df[self.x_column], errors='coerce') - offset
+            if not out_of_bank_df.empty:
+                out_of_bank_df[self.x_column] = pd.to_numeric(out_of_bank_df[self.x_column], errors='coerce') - offset
+
+        if DEBUG: print(f"[DEBUG apply_banks] done, returning in_bank shape={in_bank_df.shape}, out_of_bank shape={out_of_bank_df.shape}", flush=True)
+        return in_bank_df, out_of_bank_df
 
     def fix_verticals(self, df):
         """Fix vertical values by ensuring no duplicate X values"""
@@ -1549,10 +1584,10 @@ class CrossSectionEditorApp(QMainWindow):
             self._saving = False
             return
 
-        # Get the trimmed data
+        # Get in-bank and out-of-bank data
         if DEBUG: print("[DEBUG save_file] calling apply_banks()", flush=True)
-        trimmed_data = self.apply_banks()
-        if DEBUG: print(f"[DEBUG save_file] apply_banks done, shape={trimmed_data.shape if trimmed_data is not None else None}, dtypes={trimmed_data.dtypes.to_dict() if trimmed_data is not None else None}", flush=True)
+        in_bank_df, out_of_bank_df = self.apply_banks()
+        if DEBUG: print(f"[DEBUG save_file] apply_banks done, in_bank shape={in_bank_df.shape}, out_of_bank shape={out_of_bank_df.shape}", flush=True)
 
         # Determine the output filename
         input_path = self.csv_files[self.current_file_index]
@@ -1574,12 +1609,22 @@ class CrossSectionEditorApp(QMainWindow):
             # Change in-place
             output_path = input_path
 
-        if DEBUG: print(f"[DEBUG save_file] output_path={output_path}", flush=True)
+        trim_path = os.path.splitext(output_path)[0] + '.trim.csv'
+        if DEBUG: print(f"[DEBUG save_file] output_path={output_path}, trim_path={trim_path}", flush=True)
 
         try:
-            if DEBUG: print("[DEBUG save_file] calling to_csv()", flush=True)
-            trimmed_data.to_csv(output_path, index=False)
-            if DEBUG: print("[DEBUG save_file] to_csv done", flush=True)
+            if DEBUG: print("[DEBUG save_file] writing main CSV", flush=True)
+            in_bank_df.to_csv(output_path, index=False)
+            if DEBUG: print("[DEBUG save_file] main CSV written", flush=True)
+
+            # Write trim sidecar if there are out-of-bank rows; otherwise remove stale sidecar
+            if not out_of_bank_df.empty:
+                if DEBUG: print(f"[DEBUG save_file] writing trim sidecar ({len(out_of_bank_df)} rows)", flush=True)
+                out_of_bank_df.to_csv(trim_path, index=False)
+                if DEBUG: print("[DEBUG save_file] trim sidecar written", flush=True)
+            elif os.path.exists(trim_path):
+                if DEBUG: print("[DEBUG save_file] removing stale trim sidecar", flush=True)
+                os.remove(trim_path)
 
             if self.version_combo.currentText() == "Increment Version":
                 self.other_version_csvs.append(output_path)

@@ -505,6 +505,7 @@ class CrossSectionEditorApp(QMainWindow):
         file_list_layout.addWidget(file_list_label)
 
         self.file_list_widget = QListWidget()
+        self.file_list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.file_list_widget.itemClicked.connect(self.on_file_selected)
         file_list_layout.addWidget(self.file_list_widget)
 
@@ -513,9 +514,9 @@ class CrossSectionEditorApp(QMainWindow):
         self.load_files_button.clicked.connect(self.load_csv_files)
         file_list_layout.addWidget(self.load_files_button)
 
-        # Close All files button
-        self.close_all_files_button = QPushButton("Close CSV Files")
-        self.close_all_files_button.clicked.connect(self.close_all_csv_files)
+        # Close selected files button
+        self.close_all_files_button = QPushButton("Close Selected")
+        self.close_all_files_button.clicked.connect(self.close_selected_csv_files)
         file_list_layout.addWidget(self.close_all_files_button)
 
         # Add the three widgets to the splitter
@@ -718,38 +719,56 @@ class CrossSectionEditorApp(QMainWindow):
                 self.file_list_widget.clear()
                 self.file_list_widget.addItems(self.file_list)
 
-    def close_all_csv_files(self):
-        """Close all loaded CSV files and reset the UI"""
-        self.csv_files = []
-        self.other_version_csv = None
-        self.other_version_csv_name = None
-        self.other_version_csv_x = None
-        self.other_version_csv_y = None
-        self.other_version_csvs = []
-        self.other_version_csvs_btn.setText(f"Other Version CSV Files")
-        self.file_list = []
-        self.current_file_index = -1
-        self.current_data = None
+    def close_selected_csv_files(self):
+        """Close the files selected in the CSV list and update the UI"""
+        selected_rows = sorted(
+            [self.file_list_widget.row(item) for item in self.file_list_widget.selectedItems()],
+            reverse=True
+        )
+        if not selected_rows:
+            return
 
-        # Reset banks
-        self.left_bank = None
-        self.right_bank = None
-        self.left_bank_index = None
-        self.right_bank_index = None
+        current_path = (
+            self.csv_files[self.current_file_index]
+            if 0 <= self.current_file_index < len(self.csv_files)
+            else None
+        )
+        current_removed = self.current_file_index in selected_rows
 
-        # Clear the file list widget
+        for row in selected_rows:
+            self.csv_files.pop(row)
+
+        # Rebuild display names respecting duplicate-basename logic
+        name_counts: dict = {}
+        for f in self.csv_files:
+            name_counts[os.path.basename(f)] = name_counts.get(os.path.basename(f), 0) + 1
+        self.file_list = [
+            f if name_counts[os.path.basename(f)] > 1 else os.path.basename(f)
+            for f in self.csv_files
+        ]
+
         self.file_list_widget.clear()
+        self.file_list_widget.addItems(self.file_list)
 
-        # Clear the table view
-        self.table_view.setModel(None)
+        if current_removed or not self.csv_files:
+            self.current_file_index = -1
+            self.current_data = None
+            self.left_bank = self.right_bank = None
+            self.left_bank_index = self.right_bank_index = None
+            self.other_version_csv = None
+            self.other_version_csv_name = None
+            self.other_version_csv_x = None
+            self.other_version_csv_y = None
+            self.table_view.setModel(None)
+            self.canvas.axes.cla()
+            self.canvas.draw_idle()
+            self.filename_label.setText("No file loaded")
+        else:
+            self.current_file_index = self.csv_files.index(current_path)
+            self.file_list_widget.setCurrentRow(self.current_file_index)
 
-        # Clear the plot
-        self.canvas.axes.cla()
-        self.canvas.draw_idle()
-
-        # Update UI
-        self.filename_label.setText("No file loaded")
-        self.show_status_message("All CSV files closed", 1000)
+        n = len(selected_rows)
+        self.show_status_message(f"Closed {n} file{'s' if n != 1 else ''}", 1000)
 
     def match_other_version_csv(self):
         """Finds the most recent versioned CSV matching self.file_name_no_version."""

@@ -137,10 +137,10 @@ class MatplotlibCanvas(FigureCanvas):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.updateGeometry()
 
-class ColumnSettingsDialog(QDialog):
+class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Column Settings")
+        self.setWindowTitle("Settings")
         self.resize(400, 300)
 
         layout = QVBoxLayout(self)
@@ -202,13 +202,48 @@ class ColumnSettingsDialog(QDialog):
         northing_group.setLayout(northing_layout)
         layout.addWidget(northing_group)
 
+        # Version regex
+        version_group = QGroupBox("Version Regex")
+        version_layout = QVBoxLayout()
+        self.version_regex_edit = QLineEdit()
+        self.version_regex_edit.setToolTip(
+            "Regular expression used to detect and strip the version suffix from filenames.\n"
+            "Must contain exactly one capturing group ( ) that marks the version token.\n"
+            "The entire match is removed when stripping; the new version string from the\n"
+            "Version field is then appended with a leading underscore.\n\n"
+            "Examples:\n"
+            "  _(v[\\d]+)   matches _v02, _v003, etc.  (default)\n"
+            "  _([\\d]{3})  matches _001, _002, etc.\n"
+            "  _(rev\\d+)   matches _rev1, _rev12, etc."
+        )
+        version_layout.addWidget(self.version_regex_edit)
+        version_group.setLayout(version_layout)
+        layout.addWidget(version_group)
+
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def set_values(self, x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs):
+    def _validate_and_accept(self):
+        """Validate all fields before accepting the dialog"""
+        pattern = self.version_regex_edit.text().strip()
+        try:
+            compiled = re.compile(pattern)
+        except re.error as e:
+            QMessageBox.critical(self, "Invalid Regex", f"Version regex is not a valid regular expression:\n{e}")
+            return
+        if compiled.groups != 1:
+            QMessageBox.critical(
+                self, "Invalid Regex",
+                f"Version regex must contain exactly one capturing group ( ).\n"
+                f"Found {compiled.groups} group(s) in: {pattern}"
+            )
+            return
+        self.accept()
+
+    def set_values(self, x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs, version_regex):
         """Set the dialog values"""
         self.x_text.setPlainText(str(x_prefs))
         self.y_text.setPlainText(str(y_prefs))
@@ -216,9 +251,10 @@ class ColumnSettingsDialog(QDialog):
         self.x_unsortable_text.setPlainText(str(x_unsortable_prefs))
         self.easting_text.setPlainText(str(easting_prefs))
         self.northing_text.setPlainText(str(northing_prefs))
+        self.version_regex_edit.setText(version_regex)
 
     def get_values(self):
-        """Get the dialog values"""
+        """Get the dialog values. Returns None values on parse error."""
         try:
             x_prefs = literal_eval(self.x_text.toPlainText())
             y_prefs = literal_eval(self.y_text.toPlainText())
@@ -226,10 +262,11 @@ class ColumnSettingsDialog(QDialog):
             x_unsortable_prefs = literal_eval(self.x_unsortable_text.toPlainText())
             easting_prefs = literal_eval(self.easting_text.toPlainText())
             northing_prefs = literal_eval(self.northing_text.toPlainText())
-            return x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs
+            version_regex = self.version_regex_edit.text().strip()
+            return x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs, version_regex
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error parsing preferences: {str(e)}")
-            return None, None, True
+            return None, None, None, None, None, None, None
 
 class CrossSectionEditorApp(QMainWindow):
     def __init__(self, iface, parent=None):
@@ -282,6 +319,9 @@ class CrossSectionEditorApp(QMainWindow):
             self.plot_loc_to_use = 'lower center'
         self.marker_points = None
         self._hover_cid = None
+
+        # Version regex used to strip/detect version suffixes in filenames
+        self.version_regex = r'_(v[\d]+)'
 
         # Other CSVs
         self.file_name_no_version = None
@@ -366,8 +406,8 @@ class CrossSectionEditorApp(QMainWindow):
         self.version_combo.currentIndexChanged.connect(self.toggle_version_fields)
 
         # Column Settings button
-        self.column_settings_button = QPushButton("Column Settings")
-        self.column_settings_button.clicked.connect(self.show_column_settings)
+        self.column_settings_button = QPushButton("Settings")
+        self.column_settings_button.clicked.connect(self.show_settings)
         header_layout.addWidget(self.column_settings_button, 1, 5)
 
         # Options
@@ -557,22 +597,28 @@ class CrossSectionEditorApp(QMainWindow):
         # print(f"position = self.table_view.viewport().mapToGlobal(position): {self.table_view.viewport().mapToGlobal(position)}")
         menu.exec(self.table_view.viewport().mapToGlobal(position))
 
-    def show_column_settings(self):
-        """Show dialog for column settings"""
-        dialog = ColumnSettingsDialog(self)
-        dialog.set_values(self.x_column_preferences, self.y_column_preferences, self.n_column_preferences, self.x_column_unsortable_preferences, self.easting_column_preferences, self.northing_column_preferences)
+    def show_settings(self):
+        """Show the settings dialog"""
+        dialog = SettingsDialog(self)
+        dialog.set_values(
+            self.x_column_preferences, self.y_column_preferences,
+            self.n_column_preferences, self.x_column_unsortable_preferences,
+            self.easting_column_preferences, self.northing_column_preferences,
+            self.version_regex
+        )
 
         if dialog.exec():
-            x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs = dialog.get_values()
-            if x_prefs is not None and y_prefs is not None and n_prefs is not None and x_unsortable_prefs is not None and easting_prefs is not None and northing_prefs is not None:
+            x_prefs, y_prefs, n_prefs, x_unsortable_prefs, easting_prefs, northing_prefs, version_regex = dialog.get_values()
+            if x_prefs is not None:
                 self.x_column_preferences = x_prefs
                 self.y_column_preferences = y_prefs
                 self.n_column_preferences = n_prefs
                 self.x_column_unsortable_preferences = x_unsortable_prefs
                 self.easting_column_preferences = easting_prefs
                 self.northing_column_preferences = northing_prefs
+                self.version_regex = version_regex
 
-                # Reload the current file with new settings
+                # Reload the current file with new column settings
                 if self.current_data is not None:
                     self.reload_current_file()
 
@@ -761,7 +807,7 @@ class CrossSectionEditorApp(QMainWindow):
                 self.file_path = self.csv_files[self.current_file_index]
                 self.file_name = os.path.splitext(os.path.basename(self.file_path))[0]
                 if self.other_version_csvs:
-                    self.file_name_no_version = re.sub(r'_v\d+', '', self.file_name)
+                    self.file_name_no_version = re.sub(self.version_regex or r'_(v[\d]+)', '', self.file_name)
                     # print(f"self.file_name_no_version: {self.file_name_no_version}")
                     self.match_other_version_csv()
 
@@ -1599,7 +1645,7 @@ class CrossSectionEditorApp(QMainWindow):
             base, ext = os.path.splitext(filename)
 
             # Remove existing version if it has it
-            base = re.sub(r'_v\d+', '', base)
+            base = re.sub(self.version_regex or r'_(v[\d]+)', '', base)
 
             # Add new version
             version = self.version_edit.text()

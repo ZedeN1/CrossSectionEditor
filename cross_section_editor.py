@@ -1022,7 +1022,7 @@ class CrossSectionEditorApp(QMainWindow):
                 self.has_header = self.detect_header(self.file_path)
 
                 # Read the full CSV with correct header setting
-                df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None)
+                df = pd.read_csv(self.file_path, index_col=None, header=0 if self.has_header else None, comment='!')
 
                 # Ensure numeric column indices are treated as integers
                 try:

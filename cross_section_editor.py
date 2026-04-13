@@ -4,6 +4,7 @@ DEBUG = False  # Set to True to enable debug logging
 from qgis.core import (
     QgsVectorLayer,
     QgsProject,
+    QgsWkbTypes,
     QgsProcessingFeatureSourceDefinition,
     QgsFeatureRequest,
     QgsExpression,
@@ -24,7 +25,7 @@ from qgis.PyQt.QtWidgets import (
     QTableView, QHeaderView, QPushButton, QFileDialog, QListWidget, QLabel,
     QCheckBox, QComboBox, QLineEdit, QMessageBox, QGridLayout, QGroupBox, QMenu,
     QStatusBar, QDialog, QDialogButtonBox, QTextEdit,
-    QAbstractItemView, QSizePolicy, QInputDialog, QAction
+    QAbstractItemView, QSizePolicy, QAction
 )
 
 # Standard library imports
@@ -435,9 +436,18 @@ class CrossSectionEditorApp(QMainWindow):
         self.make_plot_file_check = QCheckBox("Make plot file on save")
         header_layout.addWidget(self.make_plot_file_check, 2, 3)
 
-        self.load_polygon_layer_btn = QPushButton("Load Polygon Layer")
-        header_layout.addWidget(self.load_polygon_layer_btn, 2, 4)
-        self.load_polygon_layer_btn.clicked.connect(self.select_vector_layer)
+        self.polygon_layer_combo = QComboBox()
+        self.polygon_layer_combo.setToolTip("Select a polygon layer loaded in QGIS")
+        header_layout.addWidget(self.polygon_layer_combo, 2, 4)
+        self.polygon_layer_combo.currentIndexChanged.connect(self.on_polygon_layer_changed)
+
+        # Keep combo in sync with project layer changes
+        project = QgsProject.instance()
+        assert project is not None
+        project.layersAdded.connect(self.refresh_polygon_layer_combo)
+        project.layersRemoved.connect(self.refresh_polygon_layer_combo)
+
+        self.refresh_polygon_layer_combo()
 
         self.other_version_csvs_btn = QPushButton("Other Version CSV files")
         header_layout.addWidget(self.other_version_csvs_btn, 2, 5)
@@ -1773,79 +1783,48 @@ class CrossSectionEditorApp(QMainWindow):
             self.other_version_csvs.extend(file_paths)
             self.other_version_csvs_btn.setText(f"Loaded: {len(self.other_version_csvs)}")
 
-    def select_vector_layer(self):
-        """Opens a file dialog for the user to select a GPKG or SHP file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Vector Layer", "",
-            "Vector Files (*.gpkg *.shp);;GeoPackage (*.gpkg);;Shapefile (*.shp)"
-        )
+    def refresh_polygon_layer_combo(self, *_):
+        """Repopulate the polygon layer combo with current QGIS project polygon layers."""
+        # Remember which layer is currently selected so we can restore it
+        current_id = None
+        if self.polygon_layer and self.polygon_layer.isValid():
+            current_id = self.polygon_layer.id()
 
-        if file_path:
-            if file_path.endswith(".gpkg"):
-                self.load_gpkg_layer(file_path)
-            elif file_path.endswith(".shp"):
-                self.load_vector_layer(file_path, os.path.basename(file_path))
+        self.polygon_layer_combo.blockSignals(True)
+        self.polygon_layer_combo.clear()
+        self.polygon_layer_combo.addItem("--- 2d_code_inactive ---", None)
+
+        project = QgsProject.instance()
+        assert project is not None
+        for layer in project.mapLayers().values():
+            if isinstance(layer, QgsVectorLayer) and layer.geometryType() == QgsWkbTypes.PolygonGeometry:
+                self.polygon_layer_combo.addItem(layer.name(), layer)
+
+        # Restore previous selection if the layer still exists
+        restore_idx = 0
+        if current_id:
+            for i in range(self.polygon_layer_combo.count()):
+                lyr = self.polygon_layer_combo.itemData(i)
+                if lyr is not None and lyr.id() == current_id:
+                    restore_idx = i
+                    break
             else:
-                QMessageBox.warning(self, "Invalid File", "Please select a valid GPKG or SHP file.")
+                # Layer was removed — clear the stored reference
+                self.polygon_layer = None
 
-    def load_gpkg_layer(self, file_path):
-        """Loads a GPKG layer, allowing the user to choose if multiple layers exist."""
-        layer_uris, layer_names = self.get_gpkg_layers(file_path)
-        # print(f"layer_uris: {layer_uris}")
+        # setCurrentIndex before unblocking so the signal doesn't fire during refresh
+        # (avoids a recursive loop via layersAdded → refresh → on_polygon_layer_changed → addMapLayer → layersAdded)
+        self.polygon_layer_combo.setCurrentIndex(restore_idx)
+        self.polygon_layer_combo.blockSignals(False)
 
-        if not layer_uris:
-            QMessageBox.critical(self, "Error", "No layers found in the selected GeoPackage.")
-            return
+    def on_polygon_layer_changed(self, index):
+        """Handle polygon layer combo selection change."""
+        layer = self.polygon_layer_combo.itemData(index)
+        self.polygon_layer = layer if (layer and layer.isValid()) else None
 
-        # If multiple layers exist, prompt the user to select one
-        if len(layer_uris) > 1:
-            selected_name, ok = QInputDialog.getItem(self, "Select Layer", "Choose a layer:", layer_names, 0, False)
-            if not ok or not selected_name:
-                return
-            selected_index = layer_names.index(selected_name)
-            selected_uri = layer_uris[selected_index]
-        else:
-            selected_name = layer_names[0]
-            selected_uri = layer_uris[0]
-
-        self.load_vector_layer(selected_uri, selected_name)
-
-    def get_gpkg_layers(self, file_path):
-        """Returns a list of layer names from a GPKG file."""
-        layer = QgsVectorLayer(file_path, "", "ogr")
-
-        if not layer.isValid():
-            QMessageBox.critical(self, "Error", f"Could not read GPKG: {file_path}")
-            return []
-
-        # Extract available layers
-        sublayers = layer.dataProvider().subLayers()
-        uris = []
-        names = []
-        for sublayer in sublayers:
-            name = sublayer.split('!!::!!')[1]
-            names.append(name)
-            uri = f"{file_path}|layername={name}"
-            uris.append(uri)
-
-        return uris, names
-
-    def load_vector_layer(self, path, name=""):
-        """Loads a vector layer (either from a GPKG or SHP file)."""
-        try:
-            layer = QgsVectorLayer(path, name, "ogr")
-            if not layer.isValid():
-                QMessageBox.critical(self, "Error", f"Could not load vector layer from {path}")
-                return None
-            else:
-                self.show_status_message(f"Loaded: {path}", 2000)
-
-            QgsProject.instance().addMapLayer(layer)
-            self.polygon_layer = layer
-            self.load_polygon_layer_btn.setText(f"Loaded: {layer.name()}")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Unable to load {path}, e: {str(e)}")
+        if self.polygon_layer and self.current_data is not None:
+            if self.polygon_layer.isValid():
+                self.points_to_path()
 
     def points_to_path(self):
         """Converts a point CSV file to a path layer"""

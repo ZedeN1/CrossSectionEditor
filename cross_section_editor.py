@@ -38,6 +38,12 @@ import pandas as pd
 from collections import deque
 from ast import literal_eval
 
+# Parses coordinates from POINT (x y) and POINT Z (x y z) WKT strings
+_WKT_POINT_RE = re.compile(
+    r'POINT\s*(?:Z\s*)?\(\s*([\d.eE+\-]+)\s+([\d.eE+\-]+)(?:\s+([\d.eE+\-]+))?\s*\)',
+    re.IGNORECASE
+)
+
 # Third-party imports
 import matplotlib
 import matplotlib.pyplot as plt
@@ -1418,20 +1424,22 @@ class CrossSectionEditorApp(QMainWindow):
         row1 = prev_row.iloc[0]
         row2 = next_row.iloc[0]
         
+        # Interpolation ratio — shared by all columns
+        x1, x2 = row1[x_col], row2[x_col]
+        ratio = (x_value - x1) / (x2 - x1)
+
         # Create interpolated row
         new_row = {}
         for col in df.columns:
             if col == x_col:
                 new_row[col] = x_value
                 continue
-            
+
             col_dtype = df[col].dtype
             v1, v2 = row1[col], row2[col]
-            
+
             if pd.api.types.is_numeric_dtype(col_dtype) and not pd.api.types.is_bool_dtype(col_dtype):
                 # Linear interpolation for numeric columns
-                x1, x2 = row1[x_col], row2[x_col]
-                ratio = (x_value - x1) / (x2 - x1)
                 interpolated = v1 + ratio * (v2 - v1)
                 # Preserve integer type if both original values are int
                 if pd.api.types.is_integer_dtype(col_dtype):
@@ -1440,6 +1448,23 @@ class CrossSectionEditorApp(QMainWindow):
             elif pd.api.types.is_bool_dtype(col_dtype):
                 # For booleans: keep if same, else False
                 new_row[col] = v1 if v1 == v2 else False
+            elif str(col).lower() == 'wkt' and isinstance(v1, str) and isinstance(v2, str):
+                # Interpolate WKT POINT coordinates
+                m1 = _WKT_POINT_RE.match(v1.strip())
+                m2 = _WKT_POINT_RE.match(v2.strip())
+                if m1 and m2:
+                    coords1 = [float(c) for c in m1.groups() if c is not None]
+                    coords2 = [float(c) for c in m2.groups() if c is not None]
+                    if len(coords1) == len(coords2):
+                        ic = [c1 + ratio * (c2 - c1) for c1, c2 in zip(coords1, coords2)]
+                        if len(ic) == 3:
+                            new_row[col] = f"POINT Z ({ic[0]:.4f} {ic[1]:.4f} {ic[2]:.4f})"
+                        else:
+                            new_row[col] = f"POINT ({ic[0]:.4f} {ic[1]:.4f})"
+                    else:
+                        new_row[col] = np.nan
+                else:
+                    new_row[col] = np.nan
             elif isinstance(v1, str) and v1 == v2:
                 # Copy string if both are identical
                 new_row[col] = v1

@@ -27,7 +27,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Package and upload plugin
-        run: qgis-plugin-ci release ${GITHUB_REF_NAME#v} --github-token ${{ secrets.GITHUB_TOKEN }}
+        run: qgis-plugin-ci release ${GITHUB_REF_NAME#v} --release-tag ${GITHUB_REF_NAME} --github-token ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update qgis-plugins repository
         env:

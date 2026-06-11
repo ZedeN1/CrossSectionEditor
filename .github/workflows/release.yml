@@ -1,9 +1,9 @@
-name: Release QGIS Plugin
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*'
 
 jobs:
   release:
@@ -12,60 +12,36 @@ jobs:
       contents: write
 
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure git
-        run: |
-          git config --global user.email "action@github.com"
-          git config --global user.name "GitHub Action"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/ZedeN1/CrossSectionEditor.git
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Create plugin ZIP
-        run: |
-          cd ..
-          zip -r CrossSectionEditor.${GITHUB_REF_NAME}.zip CrossSectionEditor \
-            --exclude "*.git*" \
-            --exclude "*__pycache__*" \
-            --exclude "*.github*"
+      - name: Install qgis-plugin-ci
+        run: pip install qgis-plugin-ci
 
-      - name: Create GitHub Release and upload ZIP
-        run: |
-          gh release create ${GITHUB_REF_NAME} \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "" \
-            ../CrossSectionEditor.${GITHUB_REF_NAME}.zip
+      - name: Create GitHub release
+        run: gh release create ${{ github.ref_name }} --generate-notes --title "${{ github.ref_name }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate plugins.xml and commit to main
+      - name: Package and upload plugin
+        run: qgis-plugin-ci release ${GITHUB_REF_NAME#v} --github-token ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update qgis-plugins repository
+        env:
+          PLUGINS_REPO_TOKEN: ${{ secrets.PLUGINS_REPO_TOKEN }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          DOWNLOAD_URL="https://github.com/ZedeN1/CrossSectionEditor/releases/download/${GITHUB_REF_NAME}/CrossSectionEditor.${GITHUB_REF_NAME}.zip"
+          TAG=${{ github.ref_name }}
+          DOWNLOAD_URL="https://github.com/ZedeN1/CrossSectionEditor/releases/download/${TAG}/CrossSectionEditor.${VERSION}.zip"
 
-          cat > plugins.xml <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <plugins>
-            <pyqgis_plugin name="Cross Section Editor" version="${VERSION}">
-              <description>A plugin for editing cross section data. Primarily for ESTRY-TUFLOW cross-sections.</description>
-              <about>This plugin for QGIS provides an interactive tool for editing and managing cross-section data. Primarily for use with ESTRY-TUFLOW cross sections.</about>
-              <version>${VERSION}</version>
-              <qgis_minimum_version>3.0</qgis_minimum_version>
-              <author_name>Pavel Diptan</author_name>
-              <email>pdiptan@gmail.com</email>
-              <homepage>https://github.com/ZedeN1/CrossSectionEditor</homepage>
-              <tracker>https://github.com/ZedeN1/CrossSectionEditor/issues</tracker>
-              <repository>https://github.com/ZedeN1/CrossSectionEditor</repository>
-              <download_url>${DOWNLOAD_URL}</download_url>
-              <experimental>True</experimental>
-              <deprecated>False</deprecated>
-              <tags>cross-section,editor,hydraulics,TUFLOW</tags>
-            </pyqgis_plugin>
-          </plugins>
-          EOF
-
-          git fetch origin main
-          git checkout main
+          git clone https://x-access-token:${PLUGINS_REPO_TOKEN}@github.com/ZedeN1/qgis-plugins.git _repo
+          cd _repo
+          python3 update_plugin.py plugins.xml "Cross Section Editor" "${VERSION}" "${DOWNLOAD_URL}"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           git add plugins.xml
-          git commit -m "Update plugins.xml for ${GITHUB_REF_NAME}"
-          git push origin main
+          git diff --staged --quiet || git commit -m "chore: update Cross Section Editor to ${TAG}"
+          git push

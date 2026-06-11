@@ -1,5 +1,16 @@
-# CrossSectionEditor
-This plugin for QGIS provides an interactive tool for editing and managing cross-section data. Primarily for use with ESTRY-TUFLOW cross sections.
+# Cross Section Editor — QGIS Plugin
+
+A plugin for QGIS that provides an interactive tool for editing and managing cross-section data. Primarily for use with ESTRY-TUFLOW cross sections.
+
+## Installation
+
+1. In QGIS: **Plugins → Manage and Install Plugins → Settings**
+2. Under *Plugin Repositories*, click **Add**
+3. Enter any name and this URL:
+   ```
+   https://ZedeN1.github.io/qgis-plugins/plugins.xml
+   ```
+4. Go to the **All** tab, search for *Cross Section Editor*, and click **Install**.
 
 ![image](https://github.com/user-attachments/assets/35af0631-a13b-4c0f-a7bf-77ba1e60ae16)
 
